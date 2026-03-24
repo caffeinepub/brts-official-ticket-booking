@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const ADMIN_USER = "Gamester4443";
 const ADMIN_PASS = "BRTS3341";
@@ -38,12 +38,40 @@ export default function AdminPanel() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [pnrSearch, setPnrSearch] = useState("");
 
-  // Reload tickets from localStorage whenever admin is logged in
+  // Stable refresh function
+  const refreshTickets = useCallback(() => {
+    setTickets(getTickets());
+  }, []);
+
+  // Load tickets on mount if already logged in, and whenever loggedIn changes
   useEffect(() => {
     if (loggedIn) {
-      setTickets(getTickets());
+      refreshTickets();
     }
-  }, [loggedIn]);
+  }, [loggedIn, refreshTickets]);
+
+  // Auto-refresh when localStorage changes (cross-tab or same-tab via storage event)
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "brts_tickets" && loggedIn) {
+        refreshTickets();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [loggedIn, refreshTickets]);
+
+  // Auto-refresh when the user returns to this tab/page
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && loggedIn) {
+        refreshTickets();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
+  }, [loggedIn, refreshTickets]);
 
   const handleLogin = () => {
     if (username === ADMIN_USER && password === ADMIN_PASS) {
@@ -55,13 +83,13 @@ export default function AdminPanel() {
   };
 
   const handleRefresh = () => {
-    setTickets(getTickets());
+    refreshTickets();
     setPnrSearch("");
   };
 
   const handleDelete = (pnr: string) => {
     deleteTicket(pnr);
-    setTickets(getTickets());
+    refreshTickets();
   };
 
   const handleLogout = () => {

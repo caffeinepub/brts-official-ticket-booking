@@ -10,54 +10,82 @@ import { useState } from "react";
 
 export default function CheckTicket() {
   const [pnr, setPnr] = useState("");
+  const [name, setName] = useState("");
   const [result, setResult] = useState<Ticket | "not_found" | null>(null);
   const [searched, setSearched] = useState("");
 
+  const canSearch = pnr.trim().length > 0 && name.trim().length > 0;
+
   const handleSearch = () => {
-    const query = pnr.trim();
-    if (!query) return;
+    if (!canSearch) return;
+    const pnrQuery = pnr.trim();
+    // Normalize: lowercase + collapse multiple spaces
+    const nameQuery = name.trim().toLowerCase().replace(/\s+/g, " ");
     const tickets = getTickets();
-    const found = tickets.find((t) => t.pnr === query);
-    setSearched(query);
+    // Find by PNR first, then verify name with normalized comparison
+    const found = tickets.find((t) => {
+      const storedPnr = String(t.pnr).trim();
+      const storedName = (t.passenger?.name ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      return storedPnr === pnrQuery && storedName === nameQuery;
+    });
+    setSearched(pnrQuery);
     setResult(found ?? "not_found");
   };
+
+  const clearResult = () => setResult(null);
 
   return (
     <div className="container py-10 max-w-2xl">
       <h1 className="text-3xl font-bold mb-1">Check Ticket</h1>
       <p className="text-muted-foreground mb-8">
-        Enter your PNR number to view full booking details
+        Enter your PNR number and passenger name to view booking details
       </p>
 
       <Card className="mb-6">
-        <CardContent className="pt-6">
-          <Label className="mb-1.5 block">PNR Number</Label>
-          <div className="flex gap-2">
+        <CardContent className="pt-6 space-y-4">
+          <div>
+            <Label className="mb-1.5 block">PNR Number</Label>
             <Input
               placeholder="Enter 10-digit PNR number"
               value={pnr}
               onChange={(e) => {
-                // Allow only digits
                 const val = e.target.value.replace(/\D/g, "");
                 setPnr(val);
-                // Clear previous result when user edits
-                if (result !== null) setResult(null);
+                clearResult();
               }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               inputMode="numeric"
               maxLength={10}
               data-ocid="check.pnr_input"
             />
-            <Button
-              onClick={handleSearch}
-              disabled={!pnr.trim()}
-              style={{ background: "#1a56db" }}
-              className="text-white shrink-0"
-              data-ocid="check.search_button"
-            >
-              <Search className="h-4 w-4 mr-1" /> Search
-            </Button>
           </div>
+
+          <div>
+            <Label className="mb-1.5 block">Passenger Name</Label>
+            <Input
+              placeholder="Enter name exactly as booked"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                clearResult();
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              data-ocid="check.name_input"
+            />
+          </div>
+
+          <Button
+            onClick={handleSearch}
+            disabled={!canSearch}
+            style={{ background: "#1a56db" }}
+            className="w-full text-white"
+            data-ocid="check.search_button"
+          >
+            <Search className="h-4 w-4 mr-2" /> Search Ticket
+          </Button>
         </CardContent>
       </Card>
 
@@ -77,8 +105,8 @@ export default function CheckTicket() {
               <div>
                 <p className="font-semibold">Ticket Not Found</p>
                 <p className="text-sm">
-                  No ticket found for PNR <strong>{searched}</strong>. Make sure
-                  you copy the exact PNR shown on your ticket and try again.
+                  No ticket found for PNR <strong>{searched}</strong> with the
+                  provided name. Please check your details and try again.
                 </p>
               </div>
             </div>

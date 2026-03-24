@@ -5,6 +5,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
 } from "@tanstack/react-router";
 import SiteLayout from "./components/layout/SiteLayout";
 import AdminPanel from "./pages/AdminPanel";
@@ -40,6 +41,15 @@ const adminRoute = createRoute({
   path: "/admin",
   component: AdminPanel,
 });
+// Catch-all: redirect any unknown path to home
+const catchAllRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "$",
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
+  component: Home,
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -47,9 +57,10 @@ const routeTree = rootRoute.addChildren([
   bookRoute,
   checkRoute,
   adminRoute,
+  catchAllRoute,
 ]);
 
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree, defaultPreload: "intent" });
 
 declare module "@tanstack/react-router" {
   interface Register {
