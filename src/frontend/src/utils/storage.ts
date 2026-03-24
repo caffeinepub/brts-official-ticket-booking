@@ -29,19 +29,36 @@ export interface Ticket {
 
 const STORAGE_KEY = "brts_tickets";
 
+// Safe read — returns [] if data is missing or corrupted
 export function getTickets(): Ticket[] {
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    // Ensure result is always an array
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 export function saveTicket(ticket: Ticket): void {
-  const tickets = getTickets();
-  tickets.push(ticket);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+  try {
+    const tickets = getTickets();
+    tickets.push(ticket);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+  } catch (e) {
+    console.error("Failed to save ticket:", e);
+  }
 }
 
 export function deleteTicket(pnr: string): void {
-  const tickets = getTickets().filter((t) => t.pnr !== pnr);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+  try {
+    const tickets = getTickets().filter((t) => t.pnr !== pnr);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+  } catch (e) {
+    console.error("Failed to delete ticket:", e);
+  }
 }
 
 export function generateTicket(
@@ -50,7 +67,8 @@ export function generateTicket(
   travelDate: string,
   travelClass: string,
 ): Ticket {
-  const pnr = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+  // Always generate a 10-digit PNR
+  const pnr = (Math.floor(Math.random() * 9000000000) + 1000000000).toString();
   const coaches = ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "S1", "S2", "S3"];
   const coach = coaches[Math.floor(Math.random() * coaches.length)];
   const seat = Math.floor(1 + Math.random() * 72);

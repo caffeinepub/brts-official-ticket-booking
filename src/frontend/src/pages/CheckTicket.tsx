@@ -11,12 +11,15 @@ import { useState } from "react";
 export default function CheckTicket() {
   const [pnr, setPnr] = useState("");
   const [result, setResult] = useState<Ticket | "not_found" | null>(null);
+  const [searched, setSearched] = useState("");
 
   const handleSearch = () => {
-    if (!pnr.trim()) return;
+    const query = pnr.trim();
+    if (!query) return;
     const tickets = getTickets();
-    const found = tickets.find((t) => t.pnr === pnr.trim());
-    setResult(found || "not_found");
+    const found = tickets.find((t) => t.pnr === query);
+    setSearched(query);
+    setResult(found ?? "not_found");
   };
 
   return (
@@ -31,10 +34,17 @@ export default function CheckTicket() {
           <Label className="mb-1.5 block">PNR Number</Label>
           <div className="flex gap-2">
             <Input
-              placeholder="10-digit PNR (e.g. 4382901765)"
+              placeholder="Enter 10-digit PNR number"
               value={pnr}
-              onChange={(e) => setPnr(e.target.value)}
+              onChange={(e) => {
+                // Allow only digits
+                const val = e.target.value.replace(/\D/g, "");
+                setPnr(val);
+                // Clear previous result when user edits
+                if (result !== null) setResult(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              inputMode="numeric"
               maxLength={10}
               data-ocid="check.pnr_input"
             />
@@ -67,8 +77,8 @@ export default function CheckTicket() {
               <div>
                 <p className="font-semibold">Ticket Not Found</p>
                 <p className="text-sm">
-                  No ticket found for PNR <strong>{pnr}</strong>. Please check
-                  and try again.
+                  No ticket found for PNR <strong>{searched}</strong>. Make sure
+                  you copy the exact PNR shown on your ticket and try again.
                 </p>
               </div>
             </div>
