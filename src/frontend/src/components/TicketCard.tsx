@@ -113,19 +113,17 @@ export default function TicketCard({
 }: TicketCardProps) {
   const idx = index !== undefined ? index + 1 : 1;
   const qrContainerRef = useRef<HTMLDivElement>(null);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const barcodeRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const container = qrContainerRef.current;
     if (!container) return;
-    // Clear previous QR
     container.innerHTML = "";
     ensureQRLoaded().then(() => {
       if (!qrContainerRef.current) return;
       qrContainerRef.current.innerHTML = "";
       const QRCode = (window as any).QRCode;
-      const qr = new QRCode(qrContainerRef.current, {
+      new QRCode(qrContainerRef.current, {
         text: buildQRData(booking),
         width: 100,
         height: 100,
@@ -133,14 +131,6 @@ export default function TicketCard({
         colorLight: "#ffffff",
         correctLevel: QRCode.CorrectLevel.M,
       });
-      // Store canvas ref for PDF
-      setTimeout(() => {
-        const canvas = qrContainerRef.current?.querySelector("canvas");
-        if (canvas && qrCanvasRef.current !== canvas) {
-          (qrCanvasRef as any).current = canvas;
-        }
-      }, 100);
-      return () => qr;
     });
   }, [booking]);
 
@@ -345,13 +335,7 @@ export default function TicketCard({
           <Button
             size="sm"
             className="bg-[#0a2c6e] hover:bg-[#0d3a8e] text-white flex items-center gap-1"
-            onClick={() =>
-              downloadTicketPDF(
-                booking,
-                qrContainerRef.current?.querySelector("canvas") ?? null,
-                barcodeRef.current,
-              )
-            }
+            onClick={() => downloadTicketPDF(booking)}
             data-ocid={`ticket.download_button.${idx}`}
           >
             <Download className="h-3 w-3" /> Download PDF
