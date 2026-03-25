@@ -17,6 +17,7 @@ import {
   stations,
   trains,
 } from "@/data/trains";
+import { useActor } from "@/hooks/useActor";
 import { type Ticket, generateTicket, saveTicket } from "@/utils/storage";
 import { CheckCircle2, Clock, Loader2, MapPin, Train } from "lucide-react";
 import { motion } from "motion/react";
@@ -26,7 +27,6 @@ const RouteMap = lazy(() => import("@/components/RouteMap"));
 
 const classes = ["Sleeper", "AC3", "AC2", "AC1"];
 
-// Small station preview card shown below a dropdown when a station is selected
 function StationPreview({ station }: { station: string }) {
   const img = stationImages[station];
   if (!img) return null;
@@ -53,6 +53,7 @@ function StationPreview({ station }: { station: string }) {
 }
 
 export default function BookTicket() {
+  const { actor } = useActor();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [date, setDate] = useState("");
@@ -64,17 +65,16 @@ export default function BookTicket() {
   const [travelClass, setTravelClass] = useState("");
   const [confirmedTicket, setConfirmedTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  // Filter trains based on direction:
-  // Up = from Howrah side, Down = from Durgapur side
   const isUpDirection =
     from === "Howrah" || (from === "Barddhaman" && to === "Durgapur");
   const isDownDirection =
     from === "Durgapur" || (from === "Barddhaman" && to === "Howrah");
 
   const matchingTrains = trains.filter((t) => {
-    if (isUpDirection) return t.from === "Howrah"; // up direction trains
-    if (isDownDirection) return t.from === "Durgapur"; // down direction trains
+    if (isUpDirection) return t.from === "Howrah";
+    if (isDownDirection) return t.from === "Durgapur";
     return true;
   });
 
@@ -85,10 +85,12 @@ export default function BookTicket() {
     setConfirmedTicket(null);
   };
 
-  const handleBook = () => {
-    if (!selectedTrain || !name || !age || !gender || !travelClass) return;
+  const handleBook = async () => {
+    if (!selectedTrain || !name || !age || !gender || !travelClass || !actor)
+      return;
     setLoading(true);
-    setTimeout(() => {
+    setSaveError("");
+    try {
       const ticket = generateTicket(
         { name, age, gender },
         {
@@ -104,10 +106,14 @@ export default function BookTicket() {
         date,
         travelClass,
       );
-      saveTicket(ticket);
+      await saveTicket(actor, ticket);
       setConfirmedTicket(ticket);
+    } catch (e) {
+      console.error("Failed to save ticket:", e);
+      setSaveError("Failed to save your ticket. Please try again.");
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   const reset = () => {
@@ -121,6 +127,7 @@ export default function BookTicket() {
     setGender("");
     setTravelClass("");
     setConfirmedTicket(null);
+    setSaveError("");
   };
 
   return (
@@ -145,7 +152,6 @@ export default function BookTicket() {
         </CardHeader>
         <CardContent>
           <div className="grid sm:grid-cols-3 gap-4 mb-4">
-            {/* From Station */}
             <div>
               <Label className="mb-1.5 block">From Station</Label>
               <Select value={from} onValueChange={setFrom}>
@@ -163,7 +169,6 @@ export default function BookTicket() {
               {from && <StationPreview station={from} />}
             </div>
 
-            {/* To Station */}
             <div>
               <Label className="mb-1.5 block">To Station</Label>
               <Select value={to} onValueChange={setTo}>
@@ -181,7 +186,6 @@ export default function BookTicket() {
               {to && <StationPreview station={to} />}
             </div>
 
-            {/* Date */}
             <div>
               <Label className="mb-1.5 block">Travel Date</Label>
               <Input
@@ -203,7 +207,6 @@ export default function BookTicket() {
             Search Trains
           </Button>
 
-          {/* Map */}
           {from && to && from !== to && (
             <div className="mt-5">
               <p className="text-sm font-medium mb-2 flex items-center gap-1">
@@ -382,16 +385,24 @@ export default function BookTicket() {
                 </div>
               </div>
 
+              {saveError && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {saveError}
+                </div>
+              )}
+
               <Button
                 onClick={handleBook}
-                disabled={!name || !age || !gender || !travelClass || loading}
+                disabled={
+                  !name || !age || !gender || !travelClass || loading || !actor
+                }
                 style={{ background: "#f97316" }}
                 className="text-white w-full sm:w-auto"
                 data-ocid="book.submit_button"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Processing…
                   </>
                 ) : (

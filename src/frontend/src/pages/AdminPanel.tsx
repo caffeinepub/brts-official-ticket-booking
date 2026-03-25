@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -11,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useActor } from "@/hooks/useActor";
 import { type Ticket, deleteTicket, getTickets } from "@/utils/storage";
 import { downloadAllTicketsPDF, downloadTicketPDF } from "@/utils/ticketPdf";
 import {
@@ -25,53 +27,44 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const ADMIN_USER = "Gamester4443";
 const ADMIN_PASS = "BRTS3341";
 
 export default function AdminPanel() {
+  const { actor } = useActor();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [denied, setDenied] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [pnrSearch, setPnrSearch] = useState("");
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Stable refresh function
-  const refreshTickets = useCallback(() => {
-    setTickets(getTickets());
-  }, []);
-
-  // Load tickets on mount if already logged in, and whenever loggedIn changes
-  useEffect(() => {
-    if (loggedIn) {
-      refreshTickets();
+  const refreshTickets = useCallback(async () => {
+    if (!actor) return;
+    setLoadingTickets(true);
+    try {
+      const fetched = await getTickets(actor);
+      setTickets(fetched);
+    } catch (e) {
+      console.error("Failed to fetch tickets:", e);
+    } finally {
+      setLoadingTickets(false);
     }
-  }, [loggedIn, refreshTickets]);
+  }, [actor]);
 
-  // Auto-refresh when localStorage changes (cross-tab or same-tab via storage event)
+  // Initial load + real-time polling every 5 seconds
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === "brts_tickets" && loggedIn) {
-        refreshTickets();
-      }
+    if (!loggedIn || !actor) return;
+    refreshTickets();
+    intervalRef.current = setInterval(refreshTickets, 5000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, [loggedIn, refreshTickets]);
-
-  // Auto-refresh when the user returns to this tab/page
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible" && loggedIn) {
-        refreshTickets();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, [loggedIn, refreshTickets]);
+  }, [loggedIn, actor, refreshTickets]);
 
   const handleLogin = () => {
     if (username === ADMIN_USER && password === ADMIN_PASS) {
@@ -83,24 +76,30 @@ export default function AdminPanel() {
   };
 
   const handleRefresh = () => {
-    refreshTickets();
     setPnrSearch("");
+    refreshTickets();
   };
 
-  const handleDelete = (pnr: string) => {
-    deleteTicket(pnr);
-    refreshTickets();
+  const handleDelete = async (pnr: string) => {
+    if (!actor) return;
+    try {
+      await deleteTicket(actor, pnr);
+      await refreshTickets();
+    } catch (e) {
+      console.error("Failed to delete ticket:", e);
+    }
   };
 
   const handleLogout = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
     setLoggedIn(false);
     setUsername("");
     setPassword("");
     setDenied(false);
     setPnrSearch("");
+    setTickets([]);
   };
 
-  // Filter tickets by PNR substring (digits only search)
   const filteredTickets = pnrSearch
     ? tickets.filter((t) =>
         t.pnr.toLowerCase().includes(pnrSearch.toLowerCase()),
@@ -184,7 +183,11 @@ export default function AdminPanel() {
           <div>
             <h1 className="text-3xl font-bold">Admin Panel</h1>
             <p className="text-muted-foreground text-sm">
-              {tickets.length} booking{tickets.length !== 1 ? "s" : ""} found
+              {loadingTickets
+                ? "Loading..."
+                : `${tickets.length} booking${
+                    tickets.length !== 1 ? "s" : ""
+                  } found`}
             </p>
           </div>
         </div>
@@ -203,10 +206,14 @@ export default function AdminPanel() {
           <Button
             variant="outline"
             onClick={handleRefresh}
+            disabled={loadingTickets}
             className="flex items-center gap-1"
             data-ocid="admin.refresh_button"
           >
-            <RefreshCw className="h-4 w-4" /> Refresh
+            <RefreshCw
+              className={`h-4 w-4 ${loadingTickets ? "animate-spin" : ""}`}
+            />{" "}
+            Refresh
           </Button>
           <Button
             variant="outline"
@@ -230,7 +237,6 @@ export default function AdminPanel() {
               value={pnrSearch}
               inputMode="numeric"
               onChange={(e) => {
-                // Only allow digits
                 const val = e.target.value.replace(/\D/g, "");
                 setPnrSearch(val);
               }}
@@ -266,7 +272,13 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {tickets.length === 0 ? (
+      {loadingTickets && tickets.length === 0 ? (
+        <div className="space-y-3" data-ocid="admin.loading_state">
+          {[1, 2, 3].map((n) => (
+            <Skeleton key={n} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : tickets.length === 0 ? (
         <div
           className="py-20 text-center text-muted-foreground"
           data-ocid="admin.empty_state"
@@ -309,7 +321,6 @@ export default function AdminPanel() {
                 {filteredTickets.map((ticket, i) => (
                   <TableRow key={ticket.pnr} data-ocid={`admin.row.${i + 1}`}>
                     <TableCell className="font-mono text-xs font-bold">
-                      {/* Highlight matching digits */}
                       {pnrSearch ? (
                         <HighlightMatch text={ticket.pnr} query={pnrSearch} />
                       ) : (
@@ -397,7 +408,6 @@ export default function AdminPanel() {
   );
 }
 
-// Highlight matching substring in PNR
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
   if (idx === -1) return <>{text}</>;

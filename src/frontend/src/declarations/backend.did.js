@@ -13,6 +13,29 @@ export const UserRole = IDL.Variant({
   'user' : IDL.Null,
   'guest' : IDL.Null,
 });
+export const Ticket = IDL.Record({
+  'pnr' : IDL.Text,
+  'status' : IDL.Text,
+  'passengerGender' : IDL.Text,
+  'trainNumber' : IDL.Text,
+  'trainDuration' : IDL.Text,
+  'bookedAt' : IDL.Text,
+  'coach' : IDL.Text,
+  'seat' : IDL.Nat,
+  'trainFrom' : IDL.Text,
+  'trainName' : IDL.Text,
+  'trainType' : IDL.Text,
+  'passengerName' : IDL.Text,
+  'trainTo' : IDL.Text,
+  'travelDate' : IDL.Text,
+  'travelClass' : IDL.Text,
+  'passengerAge' : IDL.Text,
+});
+export const UserProfile = IDL.Record({
+  'name' : IDL.Text,
+  'email' : IDL.Text,
+  'phone' : IDL.Text,
+});
 export const ContactMessage = IDL.Record({
   'name' : IDL.Text,
   'email' : IDL.Text,
@@ -22,9 +45,20 @@ export const ContactMessage = IDL.Record({
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'deleteTicket' : IDL.Func([IDL.Text], [], []),
+  'getAllTickets' : IDL.Func([], [IDL.Vec(Ticket)], ['query']),
+  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getTicketByPnr' : IDL.Func([IDL.Text], [IDL.Opt(Ticket)], ['query']),
+  'getUserProfile' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(UserProfile)],
+      ['query'],
+    ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'listMessages' : IDL.Func([], [IDL.Vec(ContactMessage)], ['query']),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveTicket' : IDL.Func([Ticket], [], []),
   'submitMessage' : IDL.Func([ContactMessage], [], []),
 });
 
@@ -36,6 +70,29 @@ export const idlFactory = ({ IDL }) => {
     'user' : IDL.Null,
     'guest' : IDL.Null,
   });
+  const Ticket = IDL.Record({
+    'pnr' : IDL.Text,
+    'status' : IDL.Text,
+    'passengerGender' : IDL.Text,
+    'trainNumber' : IDL.Text,
+    'trainDuration' : IDL.Text,
+    'bookedAt' : IDL.Text,
+    'coach' : IDL.Text,
+    'seat' : IDL.Nat,
+    'trainFrom' : IDL.Text,
+    'trainName' : IDL.Text,
+    'trainType' : IDL.Text,
+    'passengerName' : IDL.Text,
+    'trainTo' : IDL.Text,
+    'travelDate' : IDL.Text,
+    'travelClass' : IDL.Text,
+    'passengerAge' : IDL.Text,
+  });
+  const UserProfile = IDL.Record({
+    'name' : IDL.Text,
+    'email' : IDL.Text,
+    'phone' : IDL.Text,
+  });
   const ContactMessage = IDL.Record({
     'name' : IDL.Text,
     'email' : IDL.Text,
@@ -45,9 +102,20 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'deleteTicket' : IDL.Func([IDL.Text], [], []),
+    'getAllTickets' : IDL.Func([], [IDL.Vec(Ticket)], ['query']),
+    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getTicketByPnr' : IDL.Func([IDL.Text], [IDL.Opt(Ticket)], ['query']),
+    'getUserProfile' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'listMessages' : IDL.Func([], [IDL.Vec(ContactMessage)], ['query']),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveTicket' : IDL.Func([Ticket], [], []),
     'submitMessage' : IDL.Func([ContactMessage], [], []),
   });
 };

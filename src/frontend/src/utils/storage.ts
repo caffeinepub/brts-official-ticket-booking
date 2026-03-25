@@ -1,3 +1,5 @@
+import type { backendInterface } from "@/backend";
+
 export interface Passenger {
   name: string;
   age: string;
@@ -27,38 +29,81 @@ export interface Ticket {
   bookedAt: string;
 }
 
-const STORAGE_KEY = "brts_tickets";
+type Actor = backendInterface;
+type BackendTicket = Awaited<ReturnType<Actor["getAllTickets"]>>[number];
 
-// Safe read — returns [] if data is missing or corrupted
-export function getTickets(): Ticket[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    // Ensure result is always an array
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function mapBackendToTicket(bt: BackendTicket): Ticket {
+  return {
+    pnr: bt.pnr,
+    coach: bt.coach,
+    seat: Number(bt.seat),
+    status: (bt.status as "CONFIRMED" | "WAITING LIST") || "CONFIRMED",
+    passenger: {
+      name: bt.passengerName,
+      age: bt.passengerAge,
+      gender: bt.passengerGender,
+    },
+    train: {
+      id: bt.trainNumber,
+      number: bt.trainNumber,
+      name: bt.trainName,
+      from: bt.trainFrom,
+      to: bt.trainTo,
+      fare: 0,
+      type: bt.trainType,
+      duration: bt.trainDuration,
+    },
+    travelDate: bt.travelDate,
+    travelClass: bt.travelClass,
+    bookedAt: bt.bookedAt,
+  };
 }
 
-export function saveTicket(ticket: Ticket): void {
-  try {
-    const tickets = getTickets();
-    tickets.push(ticket);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
-  } catch (e) {
-    console.error("Failed to save ticket:", e);
-  }
+function mapTicketToBackend(ticket: Ticket): BackendTicket {
+  return {
+    pnr: ticket.pnr,
+    coach: ticket.coach,
+    seat: BigInt(ticket.seat),
+    status: ticket.status,
+    passengerName: ticket.passenger.name,
+    passengerAge: ticket.passenger.age,
+    passengerGender: ticket.passenger.gender,
+    trainNumber: ticket.train.number,
+    trainName: ticket.train.name,
+    trainFrom: ticket.train.from,
+    trainTo: ticket.train.to,
+    trainType: ticket.train.type,
+    trainDuration: ticket.train.duration,
+    travelDate: ticket.travelDate,
+    travelClass: ticket.travelClass,
+    bookedAt: ticket.bookedAt,
+  };
 }
 
-export function deleteTicket(pnr: string): void {
-  try {
-    const tickets = getTickets().filter((t) => t.pnr !== pnr);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
-  } catch (e) {
-    console.error("Failed to delete ticket:", e);
-  }
+export async function getTickets(actor: Actor): Promise<Ticket[]> {
+  const backendTickets = await actor.getAllTickets();
+  return backendTickets.map(mapBackendToTicket);
+}
+
+export async function saveTicket(actor: Actor, ticket: Ticket): Promise<void> {
+  await actor.saveTicket(mapTicketToBackend(ticket));
+}
+
+export async function deleteTicket(actor: Actor, pnr: string): Promise<void> {
+  await actor.deleteTicket(pnr);
+}
+
+export async function searchTicketByPnrAndName(
+  actor: Actor,
+  pnr: string,
+  name: string,
+): Promise<Ticket | null> {
+  const bt = await actor.getTicketByPnr(pnr);
+  if (!bt) return null;
+  const storedName = bt.passengerName.trim().toLowerCase().replace(/\s+/g, " ");
+  const queryName = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (storedName !== queryName) return null;
+  return mapBackendToTicket(bt);
 }
 
 export function generateTicket(
@@ -67,7 +112,6 @@ export function generateTicket(
   travelDate: string,
   travelClass: string,
 ): Ticket {
-  // Always generate a 10-digit PNR
   const pnr = (Math.floor(Math.random() * 9000000000) + 1000000000).toString();
   const coaches = ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "S1", "S2", "S3"];
   const coach = coaches[Math.floor(Math.random() * coaches.length)];

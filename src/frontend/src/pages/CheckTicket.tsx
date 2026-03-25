@@ -3,36 +3,38 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type Ticket, getTickets } from "@/utils/storage";
-import { AlertCircle, Search } from "lucide-react";
+import { useActor } from "@/hooks/useActor";
+import { type Ticket, searchTicketByPnrAndName } from "@/utils/storage";
+import { AlertCircle, Loader2, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 
 export default function CheckTicket() {
+  const { actor } = useActor();
   const [pnr, setPnr] = useState("");
   const [name, setName] = useState("");
   const [result, setResult] = useState<Ticket | "not_found" | null>(null);
   const [searched, setSearched] = useState("");
+  const [searching, setSearching] = useState(false);
 
-  const canSearch = pnr.trim().length > 0 && name.trim().length > 0;
+  const canSearch =
+    pnr.trim().length > 0 && name.trim().length > 0 && !!actor && !searching;
 
-  const handleSearch = () => {
-    if (!canSearch) return;
+  const handleSearch = async () => {
+    if (!canSearch || !actor) return;
     const pnrQuery = pnr.trim();
-    // Normalize: lowercase + collapse multiple spaces
-    const nameQuery = name.trim().toLowerCase().replace(/\s+/g, " ");
-    const tickets = getTickets();
-    // Find by PNR first, then verify name with normalized comparison
-    const found = tickets.find((t) => {
-      const storedPnr = String(t.pnr).trim();
-      const storedName = (t.passenger?.name ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ");
-      return storedPnr === pnrQuery && storedName === nameQuery;
-    });
-    setSearched(pnrQuery);
-    setResult(found ?? "not_found");
+    setSearching(true);
+    try {
+      const found = await searchTicketByPnrAndName(actor, pnrQuery, name);
+      setSearched(pnrQuery);
+      setResult(found ?? "not_found");
+    } catch (e) {
+      console.error("Search failed:", e);
+      setSearched(pnrQuery);
+      setResult("not_found");
+    } finally {
+      setSearching(false);
+    }
   };
 
   const clearResult = () => setResult(null);
@@ -84,7 +86,16 @@ export default function CheckTicket() {
             className="w-full text-white"
             data-ocid="check.search_button"
           >
-            <Search className="h-4 w-4 mr-2" /> Search Ticket
+            {searching ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4 mr-2" /> Search Ticket
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>

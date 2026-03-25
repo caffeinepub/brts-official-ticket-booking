@@ -15,15 +15,45 @@ export interface ContactMessage {
   'email' : string,
   'message' : string,
 }
+export interface Ticket {
+  'pnr' : string,
+  'status' : string,
+  'passengerGender' : string,
+  'trainNumber' : string,
+  'trainDuration' : string,
+  'bookedAt' : string,
+  'coach' : string,
+  'seat' : bigint,
+  'trainFrom' : string,
+  'trainName' : string,
+  'trainType' : string,
+  'passengerName' : string,
+  'trainTo' : string,
+  'travelDate' : string,
+  'travelClass' : string,
+  'passengerAge' : string,
+}
+export interface UserProfile {
+  'name' : string,
+  'email' : string,
+  'phone' : string,
+}
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'deleteTicket' : ActorMethod<[string], undefined>,
+  'getAllTickets' : ActorMethod<[], Array<Ticket>>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getTicketByPnr' : ActorMethod<[string], [] | [Ticket]>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listMessages' : ActorMethod<[], Array<ContactMessage>>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  'saveTicket' : ActorMethod<[Ticket], undefined>,
   'submitMessage' : ActorMethod<[ContactMessage], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
