@@ -7,8 +7,8 @@ import AccessControl "authorization/access-control";
 
 actor {
 
+  // Preserved from previous version for upgrade compatibility
   let accessControlState = AccessControl.initState();
-
   type UserProfile_Legacy = { name : Text; email : Text; phone : Text };
   type ContactMessage_Legacy = { name : Text; email : Text; message : Text };
   let userProfiles = Map.empty<Principal, UserProfile_Legacy>();
