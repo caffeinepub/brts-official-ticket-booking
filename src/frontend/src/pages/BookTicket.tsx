@@ -1,3 +1,4 @@
+import SeatLayout, { generateSeats } from "@/components/SeatLayout";
 import TicketCard from "@/components/TicketCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import { useActor } from "@/hooks/useActor";
 import { type Ticket, generateTicket, saveTicket } from "@/utils/storage";
 import { CheckCircle2, Clock, Loader2, MapPin, Train } from "lucide-react";
 import { motion } from "motion/react";
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 
 const RouteMap = lazy(() => import("@/components/RouteMap"));
 
@@ -63,6 +64,9 @@ export default function BookTicket() {
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [travelClass, setTravelClass] = useState("");
+  // Seat selection
+  const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
+  const [seatStepDone, setSeatStepDone] = useState(false);
   const [confirmedTicket, setConfirmedTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -78,10 +82,26 @@ export default function BookTicket() {
     return true;
   });
 
+  // Generate coach seats based on selected train + date
+  const seats = useMemo(
+    () => (selectedTrain && date ? generateSeats(selectedTrain.id, date) : []),
+    [selectedTrain, date],
+  );
+
+  const handleToggleSeat = (seatNumber: number) => {
+    setSelectedSeats((prev) =>
+      prev.includes(seatNumber)
+        ? prev.filter((n) => n !== seatNumber)
+        : [...prev, seatNumber],
+    );
+  };
+
   const handleSearch = () => {
     if (!from || !to || !date) return;
     setSearched(true);
     setSelectedTrain(null);
+    setSelectedSeats([]);
+    setSeatStepDone(false);
     setConfirmedTicket(null);
   };
 
@@ -106,6 +126,11 @@ export default function BookTicket() {
         date,
         travelClass,
       );
+      // Attach selected seat info to the ticket notes if present
+      if (selectedSeats.length > 0) {
+        (ticket as Ticket & { selectedSeats?: number[] }).selectedSeats =
+          selectedSeats;
+      }
       await saveTicket(actor, ticket);
       setConfirmedTicket(ticket);
     } catch (e) {
@@ -126,9 +151,16 @@ export default function BookTicket() {
     setAge("");
     setGender("");
     setTravelClass("");
+    setSelectedSeats([]);
+    setSeatStepDone(false);
     setConfirmedTicket(null);
     setSaveError("");
   };
+
+  // Show seat step after train is selected and date exists
+  const showSeatStep = !!selectedTrain && !!date && !confirmedTicket;
+  // Show passenger form only after at least one seat chosen (or user skipped)
+  const showPassengerForm = showSeatStep && seatStepDone && !confirmedTicket;
 
   return (
     <div className="container py-10 max-w-4xl">
@@ -256,7 +288,11 @@ export default function BookTicket() {
                         ? "border-blue-500 bg-blue-50"
                         : "border-border hover:border-blue-300"
                     }`}
-                    onClick={() => setSelectedTrain(train)}
+                    onClick={() => {
+                      setSelectedTrain(train);
+                      setSelectedSeats([]);
+                      setSeatStepDone(false);
+                    }}
                     data-ocid={`book.train.item.${i + 1}`}
                   >
                     <img
@@ -300,8 +336,8 @@ export default function BookTicket() {
         </motion.div>
       )}
 
-      {/* Step 3: Passenger form */}
-      {selectedTrain && !confirmedTicket && (
+      {/* Step 3: Seat Selection */}
+      {showSeatStep && !seatStepDone && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -314,6 +350,65 @@ export default function BookTicket() {
                   style={{ background: "#1a56db" }}
                 >
                   3
+                </span>
+                Select Seat
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SeatLayout
+                seats={seats}
+                selectedSeats={selectedSeats}
+                onToggleSeat={handleToggleSeat}
+              />
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {selectedSeats.length > 0 && (
+                  <span className="text-sm font-medium text-blue-700">
+                    Selected: Seat{selectedSeats.length > 1 ? "s" : ""}{" "}
+                    {selectedSeats.sort((a, b) => a - b).join(", ")}
+                  </span>
+                )}
+                <Button
+                  onClick={() => setSeatStepDone(true)}
+                  style={{
+                    background:
+                      selectedSeats.length > 0 ? "#1a56db" : "#6b7280",
+                  }}
+                  className="text-white"
+                  disabled={selectedSeats.length === 0}
+                >
+                  Continue with{" "}
+                  {selectedSeats.length > 0
+                    ? `Seat ${selectedSeats.join(", ")}`
+                    : "Selection"}
+                </Button>
+                <button
+                  type="button"
+                  className="text-sm text-muted-foreground underline"
+                  onClick={() => setSeatStepDone(true)}
+                >
+                  Skip seat selection
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Step 4: Passenger form */}
+      {showPassengerForm && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <span
+                  className="w-7 h-7 rounded-full text-white text-sm flex items-center justify-center"
+                  style={{ background: "#1a56db" }}
+                >
+                  4
                 </span>
                 Passenger Details
               </CardTitle>
@@ -371,6 +466,24 @@ export default function BookTicket() {
                 </div>
               </div>
 
+              {/* Selected seats summary */}
+              {selectedSeats.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm">
+                  <span className="font-semibold text-blue-700">
+                    🪑 Seat(s) Selected:{" "}
+                  </span>
+                  <span className="text-blue-800">
+                    {selectedSeats
+                      .sort((a, b) => a - b)
+                      .map((n) => {
+                        const s = seats.find((seat) => seat.number === n);
+                        return s ? `${n} (${s.berth})` : `${n}`;
+                      })
+                      .join(", ")}
+                  </span>
+                </div>
+              )}
+
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 flex items-center gap-3">
                 <Train
                   className="h-5 w-5 shrink-0"
@@ -391,30 +504,44 @@ export default function BookTicket() {
                 </div>
               )}
 
-              <Button
-                onClick={handleBook}
-                disabled={
-                  !name || !age || !gender || !travelClass || loading || !actor
-                }
-                style={{ background: "#f97316" }}
-                className="text-white w-full sm:w-auto"
-                data-ocid="book.submit_button"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing…
-                  </>
-                ) : (
-                  "Confirm Booking"
-                )}
-              </Button>
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  type="button"
+                  className="text-sm text-muted-foreground underline"
+                  onClick={() => setSeatStepDone(false)}
+                >
+                  ← Change Seat
+                </button>
+                <Button
+                  onClick={handleBook}
+                  disabled={
+                    !name ||
+                    !age ||
+                    !gender ||
+                    !travelClass ||
+                    loading ||
+                    !actor
+                  }
+                  style={{ background: "#f97316" }}
+                  className="text-white"
+                  data-ocid="book.submit_button"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing…
+                    </>
+                  ) : (
+                    "Confirm Booking"
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
       )}
 
-      {/* Step 4: Confirmation */}
+      {/* Step 5: Confirmation */}
       {confirmedTicket && (
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
