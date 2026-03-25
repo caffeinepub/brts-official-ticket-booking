@@ -1,18 +1,18 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { Ticket } from "@/utils/storage";
+import type { Booking } from "@/utils/storage";
 import { downloadTicketPDF } from "@/utils/ticketPdf";
-import { Calendar, Download, MapPin, Train, User } from "lucide-react";
+import { Calendar, Download, MapPin, Train, Users } from "lucide-react";
 
 interface TicketCardProps {
-  ticket: Ticket;
+  booking: Booking;
   onDelete?: (pnr: string) => void;
   index?: number;
 }
 
 export default function TicketCard({
-  ticket,
+  booking,
   onDelete,
   index,
 }: TicketCardProps) {
@@ -25,7 +25,7 @@ export default function TicketCard({
       <div
         className="h-2"
         style={{
-          background: ticket.status === "CONFIRMED" ? "#16a34a" : "#f97316",
+          background: booking.status === "CONFIRMED" ? "#16a34a" : "#f97316",
         }}
       />
       <CardContent className="pt-5 pb-5">
@@ -35,38 +35,28 @@ export default function TicketCard({
               PNR Number
             </p>
             <p className="text-xl font-bold font-mono text-primary">
-              {ticket.pnr}
+              {booking.pnr}
             </p>
           </div>
           <Badge
             className={
-              ticket.status === "CONFIRMED"
+              booking.status === "CONFIRMED"
                 ? "bg-green-100 text-green-800 border-green-200"
                 : "bg-orange-100 text-orange-800 border-orange-200"
             }
           >
-            {ticket.status}
+            {booking.status}
           </Badge>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
           <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-xs text-muted-foreground">Passenger</p>
-              <p className="font-medium">{ticket.passenger.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {ticket.passenger.age}yr · {ticket.passenger.gender}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
             <Train className="h-4 w-4 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Train</p>
-              <p className="font-medium">{ticket.train.name}</p>
+              <p className="font-medium">{booking.train.name}</p>
               <p className="text-xs text-muted-foreground">
-                {ticket.train.number}
+                {booking.train.number}
               </p>
             </div>
           </div>
@@ -75,7 +65,7 @@ export default function TicketCard({
             <div>
               <p className="text-xs text-muted-foreground">Route</p>
               <p className="font-medium">
-                {ticket.train.from} → {ticket.train.to}
+                {booking.train.from} → {booking.train.to}
               </p>
             </div>
           </div>
@@ -83,28 +73,72 @@ export default function TicketCard({
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Travel Date</p>
-              <p className="font-medium">{ticket.travelDate}</p>
+              <p className="font-medium">{booking.travelDate}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <p className="text-xs text-muted-foreground">Passengers</p>
+              <p className="font-medium">{booking.passengers.length}</p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 text-xs mb-4">
           <span className="bg-secondary px-2 py-1 rounded">
-            Class: {ticket.travelClass}
+            Class: {booking.travelClass}
           </span>
-          <span className="bg-secondary px-2 py-1 rounded">
-            Coach: {ticket.coach}
+          <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-1 rounded">
+            Quota: {booking.quota || "General"}
           </span>
-          <span className="bg-secondary px-2 py-1 rounded">
-            Seat: {ticket.seat}
-          </span>
+        </div>
+
+        {/* Passenger table */}
+        <div className="mb-4 overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-muted">
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  #
+                </th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  Name
+                </th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  Age
+                </th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  Gender
+                </th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  Coach
+                </th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">
+                  Seat
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {booking.passengers.map((p, i) => (
+                <tr key={p.seat} className="border-t border-border">
+                  <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                  <td className="px-3 py-2 font-medium">{p.name}</td>
+                  <td className="px-3 py-2">{p.age}</td>
+                  <td className="px-3 py-2">{p.gender}</td>
+                  <td className="px-3 py-2">{p.coach}</td>
+                  <td className="px-3 py-2 font-mono">{p.seat}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         <div className="flex gap-2">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => downloadTicketPDF(ticket)}
+            onClick={() => downloadTicketPDF(booking)}
             className="flex items-center gap-1"
             data-ocid={`ticket.download_button.${idx}`}
           >
@@ -114,7 +148,7 @@ export default function TicketCard({
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => onDelete(ticket.pnr)}
+              onClick={() => onDelete(booking.pnr)}
               data-ocid={`ticket.delete_button.${idx}`}
             >
               Delete

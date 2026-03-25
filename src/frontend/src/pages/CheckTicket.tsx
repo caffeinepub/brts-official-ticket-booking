@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useActor } from "@/hooks/useActor";
-import { type Ticket, searchTicketByPnrAndName } from "@/utils/storage";
+import { type Booking, searchBookingByPnrAndName } from "@/utils/storage";
 import { AlertCircle, Loader2, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
@@ -13,7 +13,7 @@ export default function CheckTicket() {
   const { actor } = useActor();
   const [pnr, setPnr] = useState("");
   const [name, setName] = useState("");
-  const [result, setResult] = useState<Ticket | "not_found" | null>(null);
+  const [result, setResult] = useState<Booking | "not_found" | null>(null);
   const [searched, setSearched] = useState("");
   const [searching, setSearching] = useState(false);
 
@@ -25,7 +25,7 @@ export default function CheckTicket() {
     const pnrQuery = pnr.trim();
     setSearching(true);
     try {
-      const found = await searchTicketByPnrAndName(actor, pnrQuery, name);
+      const found = await searchBookingByPnrAndName(actor, pnrQuery, name);
       setSearched(pnrQuery);
       setResult(found ?? "not_found");
     } catch (e) {
@@ -131,7 +131,7 @@ export default function CheckTicket() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            <TicketCard ticket={result} index={0} />
+            <TicketCard booking={result} index={0} />
           </motion.div>
         )}
       </AnimatePresence>

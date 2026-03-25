@@ -1,6 +1,24 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,11 +31,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useActor } from "@/hooks/useActor";
-import { type Ticket, deleteTicket, getTickets } from "@/utils/storage";
+import {
+  type Booking,
+  deleteBooking,
+  getTickets,
+  groupTicketsIntoBookings,
+} from "@/utils/storage";
 import { downloadAllTicketsPDF, downloadTicketPDF } from "@/utils/ticketPdf";
 import {
   AlertCircle,
   Download,
+  Eye,
   FileDown,
   LogOut,
   RefreshCw,
@@ -38,9 +62,10 @@ export default function AdminPanel() {
   const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [denied, setDenied] = useState(false);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [pnrSearch, setPnrSearch] = useState("");
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [viewBooking, setViewBooking] = useState<Booking | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshTickets = useCallback(async () => {
@@ -48,7 +73,7 @@ export default function AdminPanel() {
     setLoadingTickets(true);
     try {
       const fetched = await getTickets(actor);
-      setTickets(fetched);
+      setBookings(groupTicketsIntoBookings(fetched));
     } catch (e) {
       console.error("Failed to fetch tickets:", e);
     } finally {
@@ -56,7 +81,6 @@ export default function AdminPanel() {
     }
   }, [actor]);
 
-  // Initial load + real-time polling every 5 seconds
   useEffect(() => {
     if (!loggedIn || !actor) return;
     refreshTickets();
@@ -83,10 +107,10 @@ export default function AdminPanel() {
   const handleDelete = async (pnr: string) => {
     if (!actor) return;
     try {
-      await deleteTicket(actor, pnr);
+      await deleteBooking(actor, pnr);
       await refreshTickets();
     } catch (e) {
-      console.error("Failed to delete ticket:", e);
+      console.error("Failed to delete booking:", e);
     }
   };
 
@@ -97,14 +121,14 @@ export default function AdminPanel() {
     setPassword("");
     setDenied(false);
     setPnrSearch("");
-    setTickets([]);
+    setBookings([]);
   };
 
-  const filteredTickets = pnrSearch
-    ? tickets.filter((t) =>
-        t.pnr.toLowerCase().includes(pnrSearch.toLowerCase()),
+  const filteredBookings = pnrSearch
+    ? bookings.filter((b) =>
+        b.pnr.toLowerCase().includes(pnrSearch.toLowerCase()),
       )
-    : tickets;
+    : bookings;
 
   if (!loggedIn) {
     return (
@@ -177,6 +201,7 @@ export default function AdminPanel() {
 
   return (
     <div className="container py-10">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-7 w-7" style={{ color: "#1a56db" }} />
@@ -185,16 +210,16 @@ export default function AdminPanel() {
             <p className="text-muted-foreground text-sm">
               {loadingTickets
                 ? "Loading..."
-                : `${tickets.length} booking${
-                    tickets.length !== 1 ? "s" : ""
+                : `${bookings.length} booking${
+                    bookings.length !== 1 ? "s" : ""
                   } found`}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {tickets.length > 0 && (
+          {bookings.length > 0 && (
             <Button
-              onClick={() => downloadAllTicketsPDF(tickets)}
+              onClick={() => downloadAllTicketsPDF(bookings)}
               className="flex items-center gap-1.5 text-white"
               style={{ background: "#f97316" }}
               data-ocid="admin.download_all_button"
@@ -227,7 +252,7 @@ export default function AdminPanel() {
       </div>
 
       {/* PNR Search Bar */}
-      {tickets.length > 0 && (
+      {bookings.length > 0 && (
         <div className="mb-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -264,28 +289,29 @@ export default function AdminPanel() {
           <p className="text-xs text-muted-foreground mt-2">
             Showing{" "}
             <span className="font-semibold" style={{ color: "#1a56db" }}>
-              {filteredTickets.length}
+              {filteredBookings.length}
             </span>{" "}
-            of <span className="font-semibold">{tickets.length}</span> booking
-            {tickets.length !== 1 ? "s" : ""}
+            of <span className="font-semibold">{bookings.length}</span> booking
+            {bookings.length !== 1 ? "s" : ""}
           </p>
         </div>
       )}
 
-      {loadingTickets && tickets.length === 0 ? (
+      {/* Table / States */}
+      {loadingTickets && bookings.length === 0 ? (
         <div className="space-y-3" data-ocid="admin.loading_state">
           {[1, 2, 3].map((n) => (
             <Skeleton key={n} className="h-14 w-full rounded-lg" />
           ))}
         </div>
-      ) : tickets.length === 0 ? (
+      ) : bookings.length === 0 ? (
         <div
           className="py-20 text-center text-muted-foreground"
           data-ocid="admin.empty_state"
         >
-          No tickets booked yet.
+          No bookings yet.
         </div>
-      ) : filteredTickets.length === 0 ? (
+      ) : filteredBookings.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -294,7 +320,7 @@ export default function AdminPanel() {
         >
           <Search className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
           <p className="text-muted-foreground font-medium">
-            No tickets match this PNR
+            No bookings match this PNR
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Try a different number or clear the search
@@ -306,95 +332,141 @@ export default function AdminPanel() {
             <Table data-ocid="admin.table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>PNR</TableHead>
-                  <TableHead>Passenger</TableHead>
-                  <TableHead>Train</TableHead>
-                  <TableHead>Route</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Coach/Seat</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="w-[130px]">PNR</TableHead>
+                  <TableHead className="min-w-[160px]">Passengers</TableHead>
+                  <TableHead className="min-w-[160px]">Train</TableHead>
+                  <TableHead className="min-w-[160px]">Route</TableHead>
+                  <TableHead className="w-[100px]">Date</TableHead>
+                  <TableHead className="w-[90px]">Class</TableHead>
+                  <TableHead className="w-[100px]">Coach/Seat</TableHead>
+                  <TableHead className="w-[120px]">Status</TableHead>
+                  <TableHead className="w-[180px] text-center">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTickets.map((ticket, i) => (
-                  <TableRow key={ticket.pnr} data-ocid={`admin.row.${i + 1}`}>
+                {filteredBookings.map((booking, i) => (
+                  <TableRow key={booking.pnr} data-ocid={`admin.row.${i + 1}`}>
                     <TableCell className="font-mono text-xs font-bold">
                       {pnrSearch ? (
-                        <HighlightMatch text={ticket.pnr} query={pnrSearch} />
+                        <HighlightMatch text={booking.pnr} query={pnrSearch} />
                       ) : (
-                        ticket.pnr
+                        booking.pnr
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium">{ticket.passenger.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {ticket.passenger.age}yr · {ticket.passenger.gender}
+                      <div className="text-xs font-semibold text-muted-foreground mb-0.5">
+                        {booking.passengers.length} passenger
+                        {booking.passengers.length !== 1 ? "s" : ""}
                       </div>
+                      {booking.passengers.map((p) => (
+                        <div
+                          key={`${p.name}-${p.seat}`}
+                          className="leading-tight"
+                        >
+                          <span className="font-medium text-sm">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-1">
+                            {p.age}yr · {p.gender}
+                          </span>
+                        </div>
+                      ))}
                     </TableCell>
                     <TableCell>
                       <div className="font-medium text-sm">
-                        {ticket.train.name}
+                        {booking.train.name}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {ticket.train.number}
+                        {booking.train.number}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
-                      {ticket.train.from} → {ticket.train.to}
+                      {booking.train.from} → {booking.train.to}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {ticket.travelDate}
+                      {booking.travelDate}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {ticket.travelClass}
+                      {booking.travelClass}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {ticket.coach} / {ticket.seat}
+                      {booking.passengers
+                        .map((p) => `${p.coach}/${p.seat}`)
+                        .join(", ")}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        className="text-xs"
-                        style={
-                          ticket.status === "CONFIRMED"
-                            ? {
-                                background: "#dcfce7",
-                                color: "#166534",
-                                border: "1px solid #bbf7d0",
-                              }
-                            : {
-                                background: "#fff7ed",
-                                color: "#9a3412",
-                                border: "1px solid #fed7aa",
-                              }
-                        }
-                      >
-                        {ticket.status}
-                      </Badge>
+                      <StatusBadge status={booking.status} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* View */}
                         <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => downloadTicketPDF(ticket)}
-                          title="Download PDF"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                          onClick={() => setViewBooking(booking)}
+                          data-ocid={`admin.open_modal_button.${i + 1}`}
+                        >
+                          <Eye className="h-3 w-3" />
+                          View
+                        </Button>
+
+                        {/* PDF */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800"
+                          onClick={() => downloadTicketPDF(booking)}
                           data-ocid={`admin.download_button.${i + 1}`}
                         >
-                          <Download className="h-3.5 w-3.5" />
+                          <Download className="h-3 w-3" />
+                          PDF
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(ticket.pnr)}
-                          title="Delete"
-                          data-ocid={`admin.delete_button.${i + 1}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+
+                        {/* Delete with confirm */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                              data-ocid={`admin.delete_button.${i + 1}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent data-ocid="admin.dialog">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Delete Booking?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently delete booking{" "}
+                                <span className="font-mono font-bold">
+                                  {booking.pnr}
+                                </span>{" "}
+                                for{" "}
+                                {booking.passengers
+                                  .map((p) => p.name)
+                                  .join(", ")}
+                                . This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel data-ocid="admin.cancel_button">
+                                Cancel
+                              </AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDelete(booking.pnr)}
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                                data-ocid="admin.confirm_button"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -404,7 +476,171 @@ export default function AdminPanel() {
           </CardContent>
         </Card>
       )}
+
+      {/* View Ticket Modal */}
+      <Dialog
+        open={viewBooking !== null}
+        onOpenChange={(open) => !open && setViewBooking(null)}
+      >
+        <DialogContent className="max-w-2xl" data-ocid="admin.modal">
+          {viewBooking && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-3">
+                  <span className="text-lg">Booking Details</span>
+                  <StatusBadge status={viewBooking.status} />
+                </DialogTitle>
+              </DialogHeader>
+
+              {/* PNR prominent */}
+              <div
+                className="rounded-lg px-4 py-3 flex items-center justify-between"
+                style={{
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                }}
+              >
+                <div>
+                  <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">
+                    PNR Number
+                  </p>
+                  <p
+                    className="font-mono text-2xl font-bold"
+                    style={{ color: "#1a56db" }}
+                  >
+                    {viewBooking.pnr}
+                  </p>
+                </div>
+                {viewBooking.bookedAt && (
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Booked At</p>
+                    <p className="text-sm text-muted-foreground">
+                      {viewBooking.bookedAt}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Train & Journey info */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">Train</p>
+                  <p className="font-semibold text-sm">
+                    {viewBooking.train.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {viewBooking.train.number}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">Route</p>
+                  <p className="font-semibold text-sm">
+                    {viewBooking.train.from} → {viewBooking.train.to}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">
+                    Travel Date
+                  </p>
+                  <p className="font-semibold text-sm">
+                    {viewBooking.travelDate}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">Class</p>
+                  <p className="font-semibold text-sm">
+                    {viewBooking.travelClass}
+                  </p>
+                </div>
+              </div>
+
+              {/* Passengers table */}
+              <div>
+                <p className="text-sm font-semibold mb-2">
+                  Passengers ({viewBooking.passengers.length})
+                </p>
+                <div className="rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">#</TableHead>
+                        <TableHead className="text-xs">Name</TableHead>
+                        <TableHead className="text-xs">Age</TableHead>
+                        <TableHead className="text-xs">Gender</TableHead>
+                        <TableHead className="text-xs">Coach</TableHead>
+                        <TableHead className="text-xs">Seat</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {viewBooking.passengers.map((p, idx) => (
+                        <TableRow key={`${p.name}-${p.seat}`}>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {idx + 1}
+                          </TableCell>
+                          <TableCell className="font-medium text-sm">
+                            {p.name}
+                          </TableCell>
+                          <TableCell className="text-sm">{p.age}</TableCell>
+                          <TableCell className="text-sm">{p.gender}</TableCell>
+                          <TableCell className="text-sm font-mono">
+                            {p.coach}
+                          </TableCell>
+                          <TableCell className="text-sm font-mono">
+                            {p.seat}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <DialogFooter className="flex gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setViewBooking(null)}
+                  data-ocid="admin.close_button"
+                >
+                  Close
+                </Button>
+                <Button
+                  onClick={() => downloadTicketPDF(viewBooking)}
+                  className="text-white gap-1.5"
+                  style={{ background: "#f97316" }}
+                  data-ocid="admin.download_button"
+                >
+                  <Download className="h-4 w-4" />
+                  Download PDF
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <Badge
+      className="text-xs"
+      style={
+        status === "CONFIRMED"
+          ? {
+              background: "#dcfce7",
+              color: "#166534",
+              border: "1px solid #bbf7d0",
+            }
+          : {
+              background: "#fff7ed",
+              color: "#9a3412",
+              border: "1px solid #fed7aa",
+            }
+      }
+    >
+      {status}
+    </Badge>
   );
 }
 

@@ -1,8 +1,6 @@
 /**
  * SeatLayout – visual coach layout for BRTS seat selection.
- * Shows a typical Indian railway sleeper-style coach:
- *   8 compartments × 6 berths (Lower / Middle / Upper on each side)
- *   + 8 side berths (Side Lower / Side Upper per section)
+ * Supports multiple travel classes with different berth layouts.
  * Colors: Available = green | Booked = red | Selected = blue
  */
 
@@ -15,6 +13,8 @@ export type BerthType =
   | "Side Lower"
   | "Side Upper";
 
+export type TravelClass = "Sleeper" | "AC 3 Tier" | "AC 2 Tier" | "General";
+
 export interface Seat {
   number: number;
   berth: BerthType;
@@ -25,54 +25,113 @@ interface SeatLayoutProps {
   seats: Seat[];
   selectedSeats: number[];
   onToggleSeat: (seatNumber: number) => void;
+  travelClass: TravelClass;
 }
 
 /** Simple deterministic hash so "booked" seats look realistic for a given train+date. */
-export function generateSeats(trainId: string, date: string): Seat[] {
+export function generateSeats(
+  trainId: string,
+  date: string,
+  travelClass: TravelClass,
+): Seat[] {
+  if (travelClass === "General") return [];
+
   const seed = [...(trainId + date)].reduce(
     (acc, c) => acc + c.charCodeAt(0),
     0,
   );
-  const bookedSet = new Set<number>();
-  // Book roughly 30–40% of seats deterministically
-  for (let i = 0; i < 24; i++) {
-    const n = ((seed * (i + 7) * 31) % 72) + 1;
-    bookedSet.add(n);
-  }
 
   const seats: Seat[] = [];
-  // 8 compartments × 6 berths each = seats 1–48
-  const mainBerths: BerthType[] = [
-    "Lower",
-    "Middle",
-    "Upper",
-    "Lower",
-    "Middle",
-    "Upper",
-  ];
-  for (let comp = 0; comp < 8; comp++) {
-    for (let b = 0; b < 6; b++) {
-      const num = comp * 6 + b + 1;
+
+  if (travelClass === "Sleeper") {
+    // 8 compartments × 6 berths = 48 seats + 8 side berths = 56 total
+    const totalMain = 48;
+    const bookedSet = new Set<number>();
+    for (let i = 0; i < 24; i++) {
+      const n = ((seed * (i + 7) * 31) % 56) + 1;
+      bookedSet.add(n);
+    }
+    const mainBerths: BerthType[] = [
+      "Lower",
+      "Middle",
+      "Upper",
+      "Lower",
+      "Middle",
+      "Upper",
+    ];
+    for (let comp = 0; comp < 8; comp++) {
+      for (let b = 0; b < 6; b++) {
+        const num = comp * 6 + b + 1;
+        seats.push({
+          number: num,
+          berth: mainBerths[b],
+          booked: bookedSet.has(num),
+        });
+      }
+    }
+    const sideBerths: BerthType[] = ["Side Lower", "Side Upper"];
+    for (let s = 0; s < 8; s++) {
+      const num = totalMain + s + 1;
       seats.push({
         number: num,
-        berth: mainBerths[b],
+        berth: sideBerths[s % 2],
         booked: bookedSet.has(num),
       });
     }
-  }
-  // 8 side berths (Side Lower / Side Upper) = seats 49–56
-  const sideBerths: BerthType[] = ["Side Lower", "Side Upper"];
-  for (let s = 0; s < 8; s++) {
-    const num = 48 + s + 1;
-    seats.push({
-      number: num,
-      berth: sideBerths[s % 2],
-      booked: bookedSet.has(num),
-    });
+  } else if (travelClass === "AC 3 Tier") {
+    // 8 compartments × 6 berths (L, M, U each side) = 48 seats, no side berths
+    const bookedSet = new Set<number>();
+    for (let i = 0; i < 20; i++) {
+      const n = ((seed * (i + 7) * 31) % 48) + 1;
+      bookedSet.add(n);
+    }
+    const mainBerths: BerthType[] = [
+      "Lower",
+      "Middle",
+      "Upper",
+      "Lower",
+      "Middle",
+      "Upper",
+    ];
+    for (let comp = 0; comp < 8; comp++) {
+      for (let b = 0; b < 6; b++) {
+        const num = comp * 6 + b + 1;
+        seats.push({
+          number: num,
+          berth: mainBerths[b],
+          booked: bookedSet.has(num),
+        });
+      }
+    }
+  } else if (travelClass === "AC 2 Tier") {
+    // 8 compartments × 4 berths (L, U each side) = 32 seats, no middle or side berths
+    const bookedSet = new Set<number>();
+    for (let i = 0; i < 14; i++) {
+      const n = ((seed * (i + 7) * 31) % 32) + 1;
+      bookedSet.add(n);
+    }
+    const mainBerths: BerthType[] = ["Lower", "Upper", "Lower", "Upper"];
+    for (let comp = 0; comp < 8; comp++) {
+      for (let b = 0; b < 4; b++) {
+        const num = comp * 4 + b + 1;
+        seats.push({
+          number: num,
+          berth: mainBerths[b],
+          booked: bookedSet.has(num),
+        });
+      }
+    }
   }
 
   return seats;
 }
+
+const coachLabels: Record<TravelClass, string> = {
+  Sleeper: "Coach S1 — Sleeper Class",
+  "AC 3 Tier": "Coach A1 — AC 3 Tier",
+  "AC 2 Tier": "Coach B1 — AC 2 Tier",
+  General: "General",
+};
 
 /** One clickable seat box */
 function SeatBox({
@@ -112,16 +171,26 @@ export default function SeatLayout({
   seats,
   selectedSeats,
   onToggleSeat,
+  travelClass,
 }: SeatLayoutProps) {
-  // Split main (1–48) and side (49–56)
-  const mainSeats = seats.filter((s) => s.number <= 48);
-  const sideSeats = seats.filter((s) => s.number > 48);
+  const isAC2 = travelClass === "AC 2 Tier";
+  const berthsPerComp = isAC2 ? 4 : 6;
 
-  // Group main seats into 8 compartments of 6
+  // Split main and side seats (Sleeper only has side berths)
+  const mainSeats =
+    travelClass === "Sleeper" ? seats.filter((s) => s.number <= 48) : seats;
+  const sideSeats =
+    travelClass === "Sleeper" ? seats.filter((s) => s.number > 48) : [];
+
+  const numCompartments = isAC2 ? 8 : 8;
   const compartments: Seat[][] = [];
-  for (let i = 0; i < 8; i++) {
-    compartments.push(mainSeats.slice(i * 6, i * 6 + 6));
+  for (let i = 0; i < numCompartments; i++) {
+    compartments.push(
+      mainSeats.slice(i * berthsPerComp, i * berthsPerComp + berthsPerComp),
+    );
   }
+
+  const halfBerths = berthsPerComp / 2;
 
   return (
     <div className="w-full">
@@ -151,8 +220,8 @@ export default function SeatLayout({
           className="px-4 py-2 text-xs font-bold text-white flex items-center gap-2"
           style={{ background: "#1a56db", borderRadius: "0.9rem 0.9rem 0 0" }}
         >
-          <span>🚆 Coach S1 — Sleeper Class</span>
-          <span className="ml-auto opacity-80">Seats: 56</span>
+          <span>🚆 {coachLabels[travelClass]}</span>
+          <span className="ml-auto opacity-80">Seats: {seats.length}</span>
         </div>
 
         {/* Berth type column labels */}
@@ -165,8 +234,8 @@ export default function SeatLayout({
           {/* Compartments */}
           <div className="space-y-3">
             {compartments.map((comp, ci) => {
-              const left = comp.slice(0, 3); // Lower, Middle, Upper (left)
-              const right = comp.slice(3, 6); // Lower, Middle, Upper (right)
+              const left = comp.slice(0, halfBerths);
+              const right = comp.slice(halfBerths);
               return (
                 <div
                   key={comp[0]?.number ?? ci}
@@ -175,7 +244,7 @@ export default function SeatLayout({
                   <span className="text-[9px] text-muted-foreground w-5 shrink-0 text-center">
                     {ci + 1}
                   </span>
-                  {/* Left berths: Upper on top → Lower on bottom (visual stacking) */}
+                  {/* Left berths: reversed for visual stacking (Upper on top) */}
                   <div className="flex gap-1">
                     {[...left].reverse().map((seat) => (
                       <SeatBox
@@ -204,22 +273,24 @@ export default function SeatLayout({
             })}
           </div>
 
-          {/* Side berths */}
-          <div className="mt-4 border-t pt-3">
-            <p className="text-[10px] text-muted-foreground font-semibold uppercase mb-2">
-              Side Berths
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {sideSeats.map((seat) => (
-                <SeatBox
-                  key={seat.number}
-                  seat={seat}
-                  selected={selectedSeats.includes(seat.number)}
-                  onToggle={() => onToggleSeat(seat.number)}
-                />
-              ))}
+          {/* Side berths (Sleeper only) */}
+          {sideSeats.length > 0 && (
+            <div className="mt-4 border-t pt-3">
+              <p className="text-[10px] text-muted-foreground font-semibold uppercase mb-2">
+                Side Berths
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {sideSeats.map((seat) => (
+                  <SeatBox
+                    key={seat.number}
+                    seat={seat}
+                    selected={selectedSeats.includes(seat.number)}
+                    onToggle={() => onToggleSeat(seat.number)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
