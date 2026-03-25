@@ -87,7 +87,7 @@ const emptyPassenger = (): Passenger & { _id: number } => ({
 });
 
 export default function BookTicket() {
-  const { actor } = useActor();
+  const { actor, isFetching } = useActor();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [date, setDate] = useState("");
@@ -202,7 +202,11 @@ export default function BookTicket() {
   };
 
   const handleConfirm = async () => {
-    if (!previewBooking || !actor) return;
+    if (!previewBooking) return;
+    if (isFetching || !actor) {
+      setSaveError("Please wait while the connection is being established…");
+      return;
+    }
     setLoading(true);
     setSaveError("");
     try {
@@ -211,7 +215,8 @@ export default function BookTicket() {
       setPreviewBooking(null);
     } catch (e) {
       console.error("Failed to save booking:", e);
-      setSaveError("Failed to save your booking. Please try again.");
+      const msg = e instanceof Error ? e.message : String(e);
+      setSaveError(`Failed to save your booking: ${msg}. Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -828,8 +833,18 @@ export default function BookTicket() {
               </div>
 
               {saveError && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                <div
+                  className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm"
+                  data-ocid="book.error_state"
+                >
                   {saveError}
+                </div>
+              )}
+
+              {isFetching && (
+                <div className="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-700 text-sm flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Connecting to server… please wait.
                 </div>
               )}
 
@@ -843,7 +858,7 @@ export default function BookTicket() {
                 </Button>
                 <Button
                   onClick={handleConfirm}
-                  disabled={loading || !actor}
+                  disabled={loading || !actor || isFetching}
                   style={{ background: "#f97316" }}
                   className="text-white"
                   data-ocid="book.confirm_button"
@@ -852,6 +867,11 @@ export default function BookTicket() {
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Saving…
+                    </>
+                  ) : isFetching ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Connecting…
                     </>
                   ) : (
                     "Confirm Booking"

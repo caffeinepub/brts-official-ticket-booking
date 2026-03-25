@@ -1,3 +1,4 @@
+import { type TravelClass, classLabel } from "@/components/SeatLayout";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const ADMIN_USER = "Gamester4443";
 const ADMIN_PASS = "BRTS3341";
+
+function quotaLabel(q: string): string {
+  if (q === "Tatkal") return "TQ - Tatkal";
+  if (q === "Ladies") return "LD - Ladies";
+  return "GN - General";
+}
 
 export default function AdminPanel() {
   const { actor } = useActor();
@@ -337,7 +344,8 @@ export default function AdminPanel() {
                   <TableHead className="min-w-[160px]">Train</TableHead>
                   <TableHead className="min-w-[160px]">Route</TableHead>
                   <TableHead className="w-[100px]">Date</TableHead>
-                  <TableHead className="w-[90px]">Class</TableHead>
+                  <TableHead className="w-[110px]">Class</TableHead>
+                  <TableHead className="w-[110px]">Quota</TableHead>
                   <TableHead className="w-[100px]">Coach/Seat</TableHead>
                   <TableHead className="w-[120px]">Status</TableHead>
                   <TableHead className="w-[180px] text-center">
@@ -387,7 +395,10 @@ export default function AdminPanel() {
                       {booking.travelDate}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {booking.travelClass}
+                      {classLabel(booking.travelClass as TravelClass)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {quotaLabel(booking.quota || "General")}
                     </TableCell>
                     <TableCell className="text-sm">
                       {booking.passengers
@@ -549,7 +560,13 @@ export default function AdminPanel() {
                 <div className="rounded-lg border p-3">
                   <p className="text-xs text-muted-foreground mb-0.5">Class</p>
                   <p className="font-semibold text-sm">
-                    {viewBooking.travelClass}
+                    {classLabel(viewBooking.travelClass as TravelClass)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">Quota</p>
+                  <p className="font-semibold text-sm">
+                    {quotaLabel(viewBooking.quota || "General")}
                   </p>
                 </div>
               </div>

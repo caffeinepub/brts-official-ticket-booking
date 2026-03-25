@@ -71,7 +71,7 @@ export function mapBackendToTicket(bt: BackendTicket): Ticket {
     status: (bt.status as "CONFIRMED" | "WAITING LIST") || "CONFIRMED",
     passenger: {
       name: bt.passengerName,
-      age: bt.passengerAge,
+      age: String(bt.passengerAge || ""),
       gender: bt.passengerGender,
     },
     train: {
@@ -98,7 +98,7 @@ function mapTicketToBackend(ticket: Ticket): BackendTicket {
     seat: BigInt(ticket.seat),
     status: ticket.status,
     passengerName: ticket.passenger.name,
-    passengerAge: ticket.passenger.age,
+    passengerAge: String(ticket.passenger.age || "0"),
     passengerGender: ticket.passenger.gender,
     trainNumber: ticket.train.number,
     trainName: ticket.train.name,
@@ -226,7 +226,11 @@ export async function saveBooking(
         coach: p.coach,
         seat: p.seat,
         status: booking.status,
-        passenger: { name: p.name, age: p.age, gender: p.gender },
+        passenger: {
+          name: p.name,
+          age: String(p.age || "0"),
+          gender: p.gender,
+        },
         train: booking.train,
         travelDate: booking.travelDate,
         travelClass: booking.travelClass,

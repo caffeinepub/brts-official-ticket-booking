@@ -1,19 +1,10 @@
-import { stationCoords } from "@/data/trains";
-import { useEffect, useRef } from "react";
-
-interface RouteMapProps {
-  from: string;
-  to: string;
-}
-
-// Load Leaflet from CDN
-function ensureLeafletLoaded(): Promise<void> {
+import { r as reactExports, s as stationCoords, j as jsxRuntimeExports } from "./index-BTtI559Z.js";
+function ensureLeafletLoaded() {
   return new Promise((resolve) => {
-    if ((window as any).L) {
+    if (window.L) {
       resolve();
       return;
     }
-    // Load CSS
     if (!document.querySelector("link[data-leaflet-css]")) {
       const link = document.createElement("link");
       link.rel = "stylesheet";
@@ -21,70 +12,54 @@ function ensureLeafletLoaded(): Promise<void> {
       link.setAttribute("data-leaflet-css", "1");
       document.head.appendChild(link);
     }
-    // Load JS
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
     script.onload = () => resolve();
     document.head.appendChild(script);
   });
 }
-
-export default function RouteMap({ from, to }: RouteMapProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-
+function RouteMap({ from, to }) {
+  const mapRef = reactExports.useRef(null);
+  const mapInstanceRef = reactExports.useRef(null);
   const fromCoord = stationCoords[from];
   const toCoord = stationCoords[to];
-
-  useEffect(() => {
+  reactExports.useEffect(() => {
     if (!fromCoord || !toCoord || !mapRef.current) return;
-
     let destroyed = false;
-
     ensureLeafletLoaded().then(() => {
       if (destroyed || !mapRef.current) return;
-      const L = (window as any).L;
-
-      // Destroy previous instance
+      const L = window.L;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
-
       const center = [
         (fromCoord[0] + toCoord[0]) / 2,
-        (fromCoord[1] + toCoord[1]) / 2,
+        (fromCoord[1] + toCoord[1]) / 2
       ];
-
       const map = L.map(mapRef.current, { scrollWheelZoom: false }).setView(
         center,
-        8,
+        8
       );
       mapInstanceRef.current = map;
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
-
       const icon = L.icon({
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl:
-          "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
         iconAnchor: [12, 41],
         iconSize: [25, 41],
-        popupAnchor: [1, -34],
+        popupAnchor: [1, -34]
       });
-
       L.marker(fromCoord, { icon }).addTo(map).bindPopup(from).openPopup();
       L.marker(toCoord, { icon }).addTo(map).bindPopup(to);
       L.polyline([fromCoord, toCoord], {
         color: "#1a56db",
         weight: 3,
-        dashArray: "8 4",
+        dashArray: "8 4"
       }).addTo(map);
     });
-
     return () => {
       destroyed = true;
       if (mapInstanceRef.current) {
@@ -93,14 +68,16 @@ export default function RouteMap({ from, to }: RouteMapProps) {
       }
     };
   }, [from, to, fromCoord, toCoord]);
-
   if (!fromCoord || !toCoord) return null;
-
-  return (
-    <div
-      ref={mapRef}
-      className="rounded-xl overflow-hidden border border-border shadow-sm"
-      style={{ height: 300 }}
-    />
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: mapRef,
+      className: "rounded-xl overflow-hidden border border-border shadow-sm",
+      style: { height: 300 }
+    }
   );
 }
+export {
+  RouteMap as default
+};
