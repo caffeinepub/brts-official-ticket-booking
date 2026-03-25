@@ -1,3 +1,7 @@
+import html2canvas from "html2canvas";
+import JsBarcode from "jsbarcode";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 import type { Booking } from "./storage";
 
 const LOGO_PATH =
@@ -33,47 +37,40 @@ function quotaLabel(q: string): string {
 function createContainer(): HTMLDivElement {
   const div = document.createElement("div");
   div.style.cssText =
-    "position:fixed;left:-9999px;top:0;z-index:-1;background:#fff;";
+    "position:absolute;left:-9999px;top:0;z-index:-1;background:#fff;";
   document.body.appendChild(div);
   return div;
 }
 
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
+/** Render QR code into a canvas element and return as data URL */
+async function qrToDataURL(text: string): Promise<string> {
+  return QRCode.toDataURL(text, {
+    width: 130,
+    margin: 1,
+    color: { dark: "#0a2c6e", light: "#ffffff" },
+    errorCorrectionLevel: "M",
   });
 }
 
-async function ensureLibraries(): Promise<void> {
-  await Promise.all([
-    loadScript(
-      "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
-    ),
-    loadScript(
-      "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js",
-    ),
-    loadScript(
-      "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
-    ),
-    loadScript(
-      "https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js",
-    ),
-  ]);
+/** Render JsBarcode into an SVG string embedded as data URL */
+function barcodeToDataURL(value: string): string {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  JsBarcode(svg, value, {
+    format: "CODE128",
+    width: 2,
+    height: 55,
+    displayValue: false,
+    background: "#ffffff",
+    lineColor: "#0a2c6e",
+  });
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(svg);
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgStr)))}`;
 }
 
 // ─── Single Ticket PDF ───────────────────────────────────────────────────────
 
 export async function downloadTicketPDF(booking: Booking): Promise<void> {
-  await ensureLibraries();
-
   const isGeneral = booking.travelClass === "General";
 
   const qrData = JSON.stringify({
@@ -100,6 +97,12 @@ export async function downloadTicketPDF(booking: Booking): Promise<void> {
     })),
     bookedAt: booking.bookedAt,
   });
+
+  // Pre-render QR and barcode as images
+  const [qrDataUrl, barcodeDataUrl] = await Promise.all([
+    qrToDataURL(qrData),
+    Promise.resolve(barcodeToDataURL(booking.pnr)),
+  ]);
 
   const passengerRows = booking.passengers
     .map(
@@ -198,11 +201,11 @@ export async function downloadTicketPDF(booking: Booking): Promise<void> {
     <div style="padding:16px 20px;display:flex;align-items:flex-start;gap:40px;border-bottom:1px solid #e0eaff;background:#f8faff">
       <div style="text-align:center">
         <div style="font-size:10px;color:#888;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">Scan QR for Details</div>
-        <div id="single-qr" style="display:inline-block"></div>
+        <img src="${qrDataUrl}" width="130" height="130" style="display:block" />
       </div>
       <div style="text-align:center">
         <div style="font-size:10px;color:#888;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase">PNR Barcode</div>
-        <svg id="single-barcode"></svg>
+        <img src="${barcodeDataUrl}" height="55" style="display:block" />
         <div style="font-family:monospace;font-size:11px;color:#0a2c6e;font-weight:700;margin-top:4px;letter-spacing:3px">${booking.pnr}</div>
       </div>
     </div>
@@ -216,32 +219,9 @@ export async function downloadTicketPDF(booking: Booking): Promise<void> {
   `;
 
   const root = container.querySelector<HTMLElement>("#brts-single-ticket")!;
-  const qrEl = container.querySelector<HTMLElement>("#single-qr")!;
-  const svgEl = container.querySelector<SVGElement>("#single-barcode")!;
 
-  const QRCode = (window as any).QRCode;
-  const JsBarcode = (window as any).JsBarcode;
-  const html2canvas = (window as any).html2canvas;
-
-  new QRCode(qrEl, {
-    text: qrData,
-    width: 130,
-    height: 130,
-    colorDark: "#0a2c6e",
-    colorLight: "#ffffff",
-    correctLevel: QRCode.CorrectLevel?.M ?? 0,
-  });
-
-  JsBarcode(svgEl, booking.pnr, {
-    format: "CODE128",
-    width: 2,
-    height: 55,
-    displayValue: false,
-    background: "#ffffff",
-    lineColor: "#0a2c6e",
-  });
-
-  await delay(900);
+  // Small delay for images to render
+  await delay(300);
 
   const canvas = await html2canvas(root, {
     scale: 2,
@@ -251,7 +231,6 @@ export async function downloadTicketPDF(booking: Booking): Promise<void> {
   });
 
   const imgData = canvas.toDataURL("image/png");
-  const { jsPDF } = (window as any).jspdf;
   const doc = new jsPDF({
     unit: "px",
     format: [canvas.width / 2, canvas.height / 2],
@@ -268,152 +247,15 @@ export async function downloadAllTicketsPDF(
   bookings: Booking[],
 ): Promise<void> {
   if (bookings.length === 0) return;
-  await ensureLibraries();
 
-  const confirmed = bookings.filter((b) => b.status === "CONFIRMED").length;
-  const waiting = bookings.length - confirmed;
-  const firstPNR = bookings[0].pnr;
-  const dateStr = new Date().toISOString().split("T")[0];
+  // Use the persistent rendered DOM container that AdminPanel keeps in the React tree
+  const element = document.getElementById("allTickets");
+  if (!element) return;
 
-  const allTicketsJson = JSON.stringify({
-    tickets: bookings.map((b) => ({
-      pnr: b.pnr,
-      status: b.status,
-      travelDate: b.travelDate,
-      travelClass: b.travelClass,
-      quota: b.quota,
-      train: {
-        number: b.train.number,
-        name: b.train.name,
-        from: b.train.from,
-        to: b.train.to,
-      },
-      passengers: b.passengers.map((p) => ({
-        name: p.name,
-        age: p.age,
-        gender: p.gender,
-        coach: p.coach,
-        seat: p.seat,
-      })),
-    })),
-  });
+  // Wait for QR canvas and barcode SVG to finish rendering
+  await delay(800);
 
-  const tableRows = bookings
-    .map(
-      (b, i) => `
-    <tr style="background:${i % 2 === 0 ? "#f8faff" : "#eef2ff"}">
-      <td style="padding:6px 8px;font-family:monospace;font-weight:700;color:#0a2c6e;font-size:11px;white-space:nowrap">${b.pnr}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#222">${b.passengers[0]?.name ?? "-"}${b.passengers.length > 1 ? ` <span style="color:#888;font-size:10px">+${b.passengers.length - 1}</span>` : ""}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#333">${b.train.number} ${b.train.name}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#333;white-space:nowrap">${b.train.from} &rarr; ${b.train.to}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#333;white-space:nowrap">${b.travelDate}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#333">${classLabel(b.travelClass)}</td>
-      <td style="padding:6px 8px;font-size:11px;color:#333">${quotaLabel(b.quota || "General")}</td>
-      <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:#333">${b.passengers[0]?.coach ?? "-"}</td>
-      <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:#333">${b.travelClass === "General" ? "N/A" : (b.passengers[0]?.seat ?? "-")}</td>
-      <td style="padding:6px 8px">
-        <span style="background:${b.status === "CONFIRMED" ? "#dcfce7" : "#fff3e0"};color:${b.status === "CONFIRMED" ? "#166534" : "#9a3412"};border:1px solid ${b.status === "CONFIRMED" ? "#86efac" : "#fdba74"};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">${b.status}</span>
-      </td>
-    </tr>`,
-    )
-    .join("");
-
-  const container = createContainer();
-  container.innerHTML = `
-  <div id="brts-all-report" style="width:1120px;background:#fff;font-family:'Segoe UI',Arial,sans-serif">
-
-    <!-- Header -->
-    <div style="background:#0a2c6e;padding:18px 24px;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="color:#aac4ff;font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Admin Report</div>
-        <div style="color:#fff;font-size:20px;font-weight:800">BRTS Official Ticket Booking &mdash; All Tickets Report</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <img src="${LOGO_PATH}" style="height:44px;object-fit:contain" crossorigin="anonymous" />
-        <div style="color:#aac4ff;font-size:10px">Generated: ${new Date().toLocaleString("en-IN")}</div>
-      </div>
-    </div>
-
-    <!-- Summary -->
-    <div style="background:#eef2ff;border-bottom:2px solid #c8d8f0;padding:10px 24px;display:flex;gap:40px;align-items:center">
-      <div style="font-size:13px;color:#0a2c6e;font-weight:700">Total Tickets: <span style="font-size:18px">${bookings.length}</span></div>
-      <div style="font-size:13px;color:#166534;font-weight:700">&#10003; Confirmed: <span style="font-size:18px">${confirmed}</span></div>
-      <div style="font-size:13px;color:#9a3412;font-weight:700">&#9679; Waiting List: <span style="font-size:18px">${waiting}</span></div>
-    </div>
-
-    <!-- Table -->
-    <div style="padding:16px 24px">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="background:#0a2c6e">
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">PNR</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Name</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Train</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Route</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Date</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Class</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Quota</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Coach</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Seat</th>
-            <th style="text-align:left;padding:9px 8px;color:#fff;font-size:11px">Status</th>
-          </tr>
-        </thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
-
-    <!-- QR + Barcode section -->
-    <div style="border-top:2px solid #c8d8f0;padding:20px 24px;background:#f8faff;display:flex;gap:60px;align-items:flex-start">
-      <div style="text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#0a2c6e;margin-bottom:4px">All Tickets QR Code</div>
-        <div style="font-size:9px;color:#888;margin-bottom:8px">Contains full data of all tickets in JSON</div>
-        <div id="all-qr" style="display:inline-block"></div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#0a2c6e;margin-bottom:4px">PNR Barcode (First Ticket)</div>
-        <div style="font-size:9px;color:#888;margin-bottom:8px">Barcode of first ticket PNR</div>
-        <svg id="all-barcode"></svg>
-        <div style="font-family:monospace;font-size:12px;color:#0a2c6e;font-weight:700;margin-top:4px;letter-spacing:3px">${firstPNR}</div>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div style="background:#0a2c6e;padding:10px 24px;text-align:center">
-      <p style="font-size:11px;color:#aac4ff;font-style:italic;margin:0">This is a computer-generated report. BRTS Official Ticket Booking &mdash; Bhartiya Railway Ticket System</p>
-    </div>
-
-  </div>
-  `;
-
-  const root = container.querySelector<HTMLElement>("#brts-all-report")!;
-  const qrEl = container.querySelector<HTMLElement>("#all-qr")!;
-  const svgEl = container.querySelector<SVGElement>("#all-barcode")!;
-
-  const QRCode = (window as any).QRCode;
-  const JsBarcode = (window as any).JsBarcode;
-  const html2canvas = (window as any).html2canvas;
-
-  new QRCode(qrEl, {
-    text: allTicketsJson,
-    width: 150,
-    height: 150,
-    colorDark: "#0a2c6e",
-    colorLight: "#ffffff",
-    correctLevel: QRCode.CorrectLevel?.M ?? 0,
-  });
-
-  JsBarcode(svgEl, firstPNR, {
-    format: "CODE128",
-    width: 2,
-    height: 65,
-    displayValue: false,
-    background: "#ffffff",
-    lineColor: "#0a2c6e",
-  });
-
-  await delay(900);
-
-  const canvas = await html2canvas(root, {
+  const canvas = await html2canvas(element, {
     scale: 2,
     useCORS: true,
     backgroundColor: "#ffffff",
@@ -421,13 +263,12 @@ export async function downloadAllTicketsPDF(
   });
 
   const imgData = canvas.toDataURL("image/png");
-  const { jsPDF } = (window as any).jspdf;
   const doc = new jsPDF({
     unit: "px",
     format: [canvas.width / 2, canvas.height / 2],
   });
   doc.addImage(imgData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
-  doc.save(`BRTS_All_Tickets_Report_${dateStr}.pdf`);
 
-  document.body.removeChild(container);
+  const dateStr = new Date().toISOString().split("T")[0];
+  doc.save(`BRTS_All_Tickets_${dateStr}.pdf`);
 }

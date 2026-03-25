@@ -2,9 +2,15 @@ import { type TravelClass, classLabel } from "@/components/SeatLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/utils/storage";
-import { downloadTicketPDF } from "@/utils/ticketPdf";
+import { downloadAllTicketsPDF } from "@/utils/ticketPdf";
+import html2canvas from "html2canvas";
+import JsBarcode from "jsbarcode";
+import { jsPDF } from "jspdf";
 import { Download, Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import QRCode from "qrcode";
+import { useEffect, useRef, useState } from "react";
+
+export { downloadAllTicketsPDF };
 
 interface TicketCardProps {
   booking: Booking;
@@ -19,91 +25,30 @@ function quotaLabel(q: string): string {
 }
 
 function buildQRData(booking: Booking): string {
-  const passengers = booking.passengers
-    .map(
-      (p) => `${p.name} (${p.age}/${p.gender}) Coach:${p.coach} Seat:${p.seat}`,
-    )
-    .join("; ");
-  return [
-    `PNR:${booking.pnr}`,
-    `Train:${booking.train.number} - ${booking.train.name}`,
-    `From:${booking.train.from} To:${booking.train.to}`,
-    `Date:${booking.travelDate}`,
-    `Class:${classLabel(booking.travelClass as TravelClass)} Quota:${quotaLabel(booking.quota || "General")}`,
-    `Status:${booking.status}`,
-    `Passengers:${passengers}`,
-  ].join(" | ");
-}
-
-// Load QRCode library from CDN
-function ensureQRLoaded(): Promise<void> {
-  return new Promise((resolve) => {
-    if ((window as any).QRCode) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-    script.onload = () => resolve();
-    document.head.appendChild(script);
+  return JSON.stringify({
+    pnr: booking.pnr,
+    status: booking.status,
+    travelDate: booking.travelDate,
+    travelClass: booking.travelClass,
+    quota: booking.quota,
+    train: {
+      number: booking.train.number,
+      name: booking.train.name,
+      from: booking.train.from,
+      to: booking.train.to,
+      type: booking.train.type,
+      duration: booking.train.duration,
+    },
+    passengers: booking.passengers.map((p) => ({
+      name: p.name,
+      age: p.age,
+      gender: p.gender,
+      coach: p.coach,
+      seat: p.seat,
+      berth: (p as any).berth,
+    })),
+    bookedAt: booking.bookedAt,
   });
-}
-
-/**
- * Simple barcode rendered as canvas using a pseudo-bar pattern from the PNR digits.
- */
-function SimpleBarcodeCanvas({
-  value,
-  canvasRef,
-}: {
-  value: string;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
-}) {
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const barWidth = 2;
-    const height = 40;
-    const quietZone = 8;
-    const bars: boolean[] = [];
-    bars.push(true, false, true, true, false, false, true, false, true, true);
-    for (const ch of value) {
-      const code = ch.charCodeAt(0);
-      for (let b = 6; b >= 0; b--) {
-        bars.push(((code >> b) & 1) === 1);
-      }
-      bars.push(false);
-    }
-    bars.push(
-      true,
-      true,
-      false,
-      true,
-      false,
-      false,
-      false,
-      true,
-      false,
-      true,
-      true,
-    );
-    const totalWidth = bars.length * barWidth + quietZone * 2;
-    canvas.width = totalWidth;
-    canvas.height = height;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, totalWidth, height);
-    bars.forEach((filled, i) => {
-      if (filled) {
-        ctx.fillStyle = "#0a2c6e";
-        ctx.fillRect(quietZone + i * barWidth, 0, barWidth, height);
-      }
-    });
-  }, [value, canvasRef]);
-
-  return <canvas ref={canvasRef} style={{ imageRendering: "pixelated" }} />;
 }
 
 export default function TicketCard({
@@ -112,32 +57,65 @@ export default function TicketCard({
   index,
 }: TicketCardProps) {
   const idx = index !== undefined ? index + 1 : 1;
-  const qrContainerRef = useRef<HTMLDivElement>(null);
-  const barcodeRef = useRef<HTMLCanvasElement>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const barcodeRef = useRef<SVGSVGElement>(null);
+  const ticketRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    const container = qrContainerRef.current;
-    if (!container) return;
-    container.innerHTML = "";
-    ensureQRLoaded().then(() => {
-      if (!qrContainerRef.current) return;
-      qrContainerRef.current.innerHTML = "";
-      const QRCode = (window as any).QRCode;
-      new QRCode(qrContainerRef.current, {
-        text: buildQRData(booking),
-        width: 100,
-        height: 100,
-        colorDark: "#0a2c6e",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M,
-      });
+    if (!qrCanvasRef.current) return;
+    QRCode.toCanvas(qrCanvasRef.current, buildQRData(booking), {
+      width: 100,
+      margin: 1,
+      color: { dark: "#0a2c6e", light: "#ffffff" },
     });
   }, [booking]);
 
+  useEffect(() => {
+    if (!barcodeRef.current) return;
+    JsBarcode(barcodeRef.current, booking.pnr, {
+      format: "CODE128",
+      width: 2,
+      height: 48,
+      displayValue: false,
+      background: "#ffffff",
+      lineColor: "#0a2c6e",
+    });
+  }, [booking.pnr]);
+
+  async function downloadTicket() {
+    if (!ticketRef.current) return;
+    setDownloading(true);
+    try {
+      // Wait for QR and barcode to fully render
+      await new Promise((r) => setTimeout(r, 500));
+
+      const canvas = await html2canvas(ticketRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const doc = new jsPDF({
+        unit: "px",
+        format: [canvas.width / 2, canvas.height / 2],
+      });
+      doc.addImage(imgData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
+      doc.save(`BRTS_Ticket_${booking.pnr}.pdf`);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const isConfirmed = booking.status === "CONFIRMED";
+  const isGeneral = booking.travelClass === "General";
 
   return (
     <div
+      id="ticket"
+      ref={ticketRef}
       className="bg-white border border-blue-200 rounded-lg overflow-hidden shadow-md font-sans"
       style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}
       data-ocid={`ticket.item.${idx}`}
@@ -296,15 +274,13 @@ export default function TicketCard({
                   <td className="px-3 py-2 text-gray-700">{p.age}</td>
                   <td className="px-3 py-2 text-gray-700">{p.gender}</td>
                   <td className="px-3 py-2 font-mono font-bold text-gray-800">
-                    {booking.travelClass === "General" ? "GN" : p.coach}
+                    {isGeneral ? "GN" : p.coach}
                   </td>
                   <td className="px-3 py-2 font-mono font-bold text-gray-800">
-                    {booking.travelClass === "General"
-                      ? "Not Applicable"
-                      : p.seat}
+                    {isGeneral ? "Not Applicable" : p.seat}
                   </td>
                   <td className="px-3 py-2 text-gray-600 text-xs">
-                    {booking.travelClass === "General"
+                    {isGeneral
                       ? "General \u2013 No Seat"
                       : (p as any).berth || "-"}
                   </td>
@@ -319,14 +295,14 @@ export default function TicketCard({
       <div className="px-5 py-4 flex flex-wrap items-end justify-between gap-4 bg-white">
         <div className="flex items-end gap-6">
           <div className="text-center">
-            <div ref={qrContainerRef} className="block" />
+            <canvas ref={qrCanvasRef} />
             <div className="text-[9px] text-gray-400 mt-1">
               Scan QR for details
             </div>
           </div>
           <div className="text-center">
-            <SimpleBarcodeCanvas value={booking.pnr} canvasRef={barcodeRef} />
-            <div className="text-[9px] text-gray-400 font-mono tracking-widest">
+            <svg ref={barcodeRef} />
+            <div className="text-[9px] text-gray-400 font-mono tracking-widest mt-1">
               {booking.pnr}
             </div>
           </div>
@@ -335,10 +311,12 @@ export default function TicketCard({
           <Button
             size="sm"
             className="bg-[#0a2c6e] hover:bg-[#0d3a8e] text-white flex items-center gap-1"
-            onClick={() => downloadTicketPDF(booking)}
+            onClick={downloadTicket}
+            disabled={downloading}
             data-ocid={`ticket.download_button.${idx}`}
           >
-            <Download className="h-3 w-3" /> Download PDF
+            <Download className="h-3 w-3" />
+            {downloading ? "Generating..." : "Download PDF"}
           </Button>
           {onDelete && (
             <Button

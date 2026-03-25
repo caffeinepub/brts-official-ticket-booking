@@ -39,6 +39,7 @@ import {
   groupTicketsIntoBookings,
 } from "@/utils/storage";
 import { downloadAllTicketsPDF, downloadTicketPDF } from "@/utils/ticketPdf";
+import JsBarcode from "jsbarcode";
 import {
   AlertCircle,
   Download,
@@ -52,6 +53,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ADMIN_USER = "Gamester4443";
@@ -61,6 +63,23 @@ function quotaLabel(q: string): string {
   if (q === "Tatkal") return "TQ - Tatkal";
   if (q === "Ladies") return "LD - Ladies";
   return "GN - General";
+}
+
+function classLabelLocal(c: string): string {
+  switch (c) {
+    case "Sleeper":
+      return "SL - Sleeper";
+    case "AC 3 Tier":
+      return "3A - AC 3 Tier";
+    case "AC 2 Tier":
+      return "2A - AC 2 Tier";
+    case "AC First Class":
+      return "1A - AC First Class";
+    case "General":
+      return "GN - General";
+    default:
+      return c;
+  }
 }
 
 export default function AdminPanel() {
@@ -96,6 +115,58 @@ export default function AdminPanel() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [loggedIn, actor, refreshTickets]);
+
+  // Render QR + barcode into the hidden allTickets container whenever bookings change
+  useEffect(() => {
+    if (!loggedIn || bookings.length === 0) return;
+
+    const qrCanvas = document.getElementById(
+      "allTicketsQR",
+    ) as HTMLCanvasElement | null;
+    if (qrCanvas) {
+      const allTicketsJson = JSON.stringify({
+        tickets: bookings.map((b) => ({
+          pnr: b.pnr,
+          status: b.status,
+          travelDate: b.travelDate,
+          travelClass: b.travelClass,
+          quota: b.quota,
+          train: {
+            number: b.train.number,
+            name: b.train.name,
+            from: b.train.from,
+            to: b.train.to,
+          },
+          passengers: b.passengers.map((p) => ({
+            name: p.name,
+            age: p.age,
+            gender: p.gender,
+            coach: p.coach,
+            seat: p.seat,
+          })),
+        })),
+      });
+      QRCode.toCanvas(qrCanvas, allTicketsJson, {
+        width: 150,
+        margin: 1,
+        color: { dark: "#0a2c6e", light: "#ffffff" },
+      }).catch(console.error);
+    }
+
+    const barcodeSvg = document.getElementById(
+      "allTicketsBarcode",
+    ) as SVGSVGElement | null;
+    if (barcodeSvg && bookings[0]) {
+      JsBarcode(barcodeSvg, bookings[0].pnr, {
+        format: "CODE128",
+        width: 2,
+        height: 60,
+        displayValue: true,
+        background: "#ffffff",
+        lineColor: "#0a2c6e",
+      });
+    }
+  }, [loggedIn, bookings]);
 
   const handleLogin = () => {
     if (username === ADMIN_USER && password === ADMIN_PASS) {
@@ -136,6 +207,9 @@ export default function AdminPanel() {
         b.pnr.toLowerCase().includes(pnrSearch.toLowerCase()),
       )
     : bookings;
+
+  const confirmed = bookings.filter((b) => b.status === "CONFIRMED").length;
+  const waiting = bookings.length - confirmed;
 
   if (!loggedIn) {
     return (
@@ -208,6 +282,339 @@ export default function AdminPanel() {
 
   return (
     <div className="container py-10">
+      {/* Hidden all-tickets print container — always in DOM when logged in */}
+      <div
+        id="allTickets"
+        style={{
+          position: "absolute",
+          left: "-9999px",
+          top: 0,
+          zIndex: -1,
+          pointerEvents: "none",
+          width: "794px",
+          background: "#fff",
+          fontFamily: "'Segoe UI', Arial, sans-serif",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            background: "#0a2c6e",
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                color: "#aac4ff",
+                fontSize: "10px",
+                fontWeight: 600,
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                marginBottom: "4px",
+              }}
+            >
+              Admin Report
+            </div>
+            <div
+              style={{
+                color: "#fff",
+                fontSize: "18px",
+                fontWeight: 800,
+              }}
+            >
+              BRTS Official Ticket Booking — All Tickets Report
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "4px",
+            }}
+          >
+            <img
+              src="/assets/uploads/img_20260312_202124-019d2490-f395-70d3-8de8-3f1d44358f73-1.png"
+              style={{ height: "44px", objectFit: "contain" }}
+              crossOrigin="anonymous"
+              alt="BRTS Logo"
+            />
+            <div style={{ color: "#aac4ff", fontSize: "10px" }}>
+              Generated: {new Date().toLocaleString("en-IN")}
+            </div>
+          </div>
+        </div>
+
+        {/* Summary */}
+        <div
+          style={{
+            background: "#eef2ff",
+            borderBottom: "2px solid #c8d8f0",
+            padding: "10px 20px",
+            display: "flex",
+            gap: "40px",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ fontSize: "13px", color: "#0a2c6e", fontWeight: 700 }}>
+            Total Tickets:{" "}
+            <span style={{ fontSize: "18px" }}>{bookings.length}</span>
+          </div>
+          <div style={{ fontSize: "13px", color: "#166534", fontWeight: 700 }}>
+            ✓ Confirmed: <span style={{ fontSize: "18px" }}>{confirmed}</span>
+          </div>
+          <div style={{ fontSize: "13px", color: "#9a3412", fontWeight: 700 }}>
+            ● Waiting List: <span style={{ fontSize: "18px" }}>{waiting}</span>
+          </div>
+        </div>
+
+        {/* Tickets Table */}
+        <div style={{ padding: "16px 20px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#0a2c6e" }}>
+                {[
+                  "PNR",
+                  "Name",
+                  "Train",
+                  "Route",
+                  "Date",
+                  "Class",
+                  "Quota",
+                  "Coach",
+                  "Seat",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      textAlign: "left",
+                      padding: "8px 7px",
+                      color: "#fff",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bookings.map((b, i) => (
+                <tr
+                  key={b.pnr}
+                  style={{ background: i % 2 === 0 ? "#f8faff" : "#eef2ff" }}
+                >
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontFamily: "monospace",
+                      fontWeight: 700,
+                      color: "#0a2c6e",
+                      fontSize: "11px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.pnr}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#222",
+                    }}
+                  >
+                    {b.passengers[0]?.name ?? "-"}
+                    {b.passengers.length > 1 && (
+                      <span style={{ color: "#888", fontSize: "10px" }}>
+                        {" "}
+                        +{b.passengers.length - 1}
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#333",
+                    }}
+                  >
+                    {b.train.number} {b.train.name}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#333",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.train.from} → {b.train.to}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#333",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {b.travelDate}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#333",
+                    }}
+                  >
+                    {classLabelLocal(b.travelClass)}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontSize: "11px",
+                      color: "#333",
+                    }}
+                  >
+                    {quotaLabel(b.quota || "General")}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontFamily: "monospace",
+                      fontSize: "11px",
+                      color: "#333",
+                    }}
+                  >
+                    {b.passengers[0]?.coach ?? "-"}
+                  </td>
+                  <td
+                    style={{
+                      padding: "6px 7px",
+                      fontFamily: "monospace",
+                      fontSize: "11px",
+                      color: "#333",
+                    }}
+                  >
+                    {b.travelClass === "General"
+                      ? "N/A"
+                      : (b.passengers[0]?.seat ?? "-")}
+                  </td>
+                  <td style={{ padding: "6px 7px" }}>
+                    <span
+                      style={{
+                        background:
+                          b.status === "CONFIRMED" ? "#dcfce7" : "#fff3e0",
+                        color: b.status === "CONFIRMED" ? "#166534" : "#9a3412",
+                        border: `1px solid ${
+                          b.status === "CONFIRMED" ? "#86efac" : "#fdba74"
+                        }`,
+                        padding: "2px 8px",
+                        borderRadius: "10px",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {b.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* QR + Barcode section */}
+        <div
+          style={{
+            borderTop: "2px solid #c8d8f0",
+            padding: "20px",
+            background: "#f8faff",
+            display: "flex",
+            gap: "60px",
+            alignItems: "flex-start",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#0a2c6e",
+                marginBottom: "4px",
+              }}
+            >
+              All Tickets QR Code
+            </div>
+            <div
+              style={{ fontSize: "9px", color: "#888", marginBottom: "8px" }}
+            >
+              Contains full data of all tickets in JSON
+            </div>
+            <canvas id="allTicketsQR" width={150} height={150} />
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#0a2c6e",
+                marginBottom: "4px",
+              }}
+            >
+              PNR Barcode (First Ticket)
+            </div>
+            <div
+              style={{ fontSize: "9px", color: "#888", marginBottom: "8px" }}
+            >
+              Barcode of first ticket PNR
+            </div>
+            <svg id="allTicketsBarcode" />
+            {bookings[0] && (
+              <div
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "12px",
+                  color: "#0a2c6e",
+                  fontWeight: 700,
+                  marginTop: "4px",
+                  letterSpacing: "3px",
+                }}
+              >
+                {bookings[0].pnr}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            background: "#0a2c6e",
+            padding: "10px 20px",
+            textAlign: "center",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "11px",
+              color: "#aac4ff",
+              fontStyle: "italic",
+              margin: 0,
+            }}
+          >
+            This is a computer-generated report. BRTS Official Ticket Booking —
+            Bhartiya Railway Ticket System
+          </p>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-2">

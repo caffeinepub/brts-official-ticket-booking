@@ -7,16 +7,13 @@ import AccessControl "authorization/access-control";
 
 actor {
 
-  // ── Preserved stable variables from previous version (required for upgrade compatibility) ──
   let accessControlState = AccessControl.initState();
 
   type UserProfile_Legacy = { name : Text; email : Text; phone : Text };
   type ContactMessage_Legacy = { name : Text; email : Text; message : Text };
-
   let userProfiles = Map.empty<Principal, UserProfile_Legacy>();
   var messageCounter = 0;
   let messages = Map.empty<Nat, ContactMessage_Legacy>();
-  // ────────────────────────────────────────────────────────────────────────────
 
   public type Ticket = {
     pnr : Text;
