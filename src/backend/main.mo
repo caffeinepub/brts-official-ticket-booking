@@ -1,24 +1,22 @@
 import Map "mo:core/Map";
-import Iter "mo:core/Iter";
+import Text "mo:core/Text";
 import Nat "mo:core/Nat";
 import Principal "mo:core/Principal";
-import Order "mo:core/Order";
-import Text "mo:core/Text";
-import Runtime "mo:core/Runtime";
 
 import AccessControl "authorization/access-control";
-import MixinAuthorization "authorization/MixinAuthorization";
-
 
 actor {
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
 
-  public type UserProfile = {
-    name : Text;
-    email : Text;
-    phone : Text;
-  };
+  // ── Preserved stable variables from previous version (required for upgrade compatibility) ──
+  let accessControlState = AccessControl.initState();
+
+  type UserProfile_Legacy = { name : Text; email : Text; phone : Text };
+  type ContactMessage_Legacy = { name : Text; email : Text; message : Text };
+
+  let userProfiles = Map.empty<Principal, UserProfile_Legacy>();
+  var messageCounter = 0;
+  let messages = Map.empty<Nat, ContactMessage_Legacy>();
+  // ────────────────────────────────────────────────────────────────────────────
 
   public type Ticket = {
     pnr : Text;
@@ -39,62 +37,16 @@ actor {
     bookedAt : Text;
   };
 
-  let userProfiles = Map.empty<Principal, UserProfile>();
-
   var ticketCounter = 0;
   let tickets = Map.empty<Nat, Ticket>();
-
-  public type ContactMessage = {
-    name : Text;
-    email : Text;
-    message : Text;
-  };
-
-  module ContactMessage {
-    public func compare(a : ContactMessage, b : ContactMessage) : Order.Order {
-      Text.compare(a.name, b.name);
-    };
-  };
-
-  var messageCounter = 0;
-  let messages = Map.empty<Nat, ContactMessage>();
-
-  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
-    userProfiles.get(caller);
-  };
-
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
-    userProfiles.get(user);
-  };
-
-  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
-    userProfiles.add(caller, profile);
-  };
-
-  public shared func submitMessage(message : ContactMessage) : async () {
-    messages.add(messageCounter, message);
-    messageCounter += 1;
-  };
-
-  public query ({ caller }) func listMessages() : async [ContactMessage] {
-    if (not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Only admins can view messages");
-    };
-    messages.values().toArray().sort();
-  };
 
   public shared func saveTicket(ticket : Ticket) : async () {
     tickets.add(ticketCounter, ticket);
     ticketCounter += 1;
+  };
+
+  public query func getAllTickets() : async [Ticket] {
+    tickets.values().toArray();
   };
 
   public query func getTicketByPnr(pnr : Text) : async ?Ticket {
@@ -104,10 +56,6 @@ actor {
       };
     };
     null;
-  };
-
-  public query func getAllTickets() : async [Ticket] {
-    tickets.values().toArray();
   };
 
   public shared func deleteTicket(pnr : Text) : async () {
@@ -122,4 +70,5 @@ actor {
       case (?key) { tickets.remove(key); };
     };
   };
+
 };

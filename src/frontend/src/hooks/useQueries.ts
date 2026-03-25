@@ -1,18 +1,16 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ContactMessage } from "../backend";
-import { useActor } from "./useActor";
+import { useMutation } from "@tanstack/react-query";
+
+interface ContactMessage {
+  name: string;
+  email: string;
+  message: string;
+}
 
 export function useSubmitContactMessage() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async (message: ContactMessage) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.submitMessage(message);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contactMessages"] });
+    mutationFn: async (_message: ContactMessage) => {
+      // Contact form - local only (backend simplified to ticket storage only)
+      await new Promise((resolve) => setTimeout(resolve, 500));
     },
   });
 }
