@@ -95,6 +95,96 @@ async function getQRDataURL(booking: Booking): Promise<string> {
   });
 }
 
+/**
+ * Generate QR code DataURL from arbitrary text (used for the all-tickets report).
+ */
+async function getQRDataURLFromText(text: string): Promise<string> {
+  await ensureQRLoaded();
+  return new Promise((resolve) => {
+    const container = document.createElement("div");
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    document.body.appendChild(container);
+    const QRCode = (window as any).QRCode;
+    new QRCode(container, {
+      text,
+      width: 160,
+      height: 160,
+      colorDark: "#0a2c6e",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel?.M ?? 0,
+    });
+    setTimeout(() => {
+      const canvas = container.querySelector("canvas");
+      const url = canvas ? canvas.toDataURL("image/png") : "";
+      document.body.removeChild(container);
+      resolve(url);
+    }, 300);
+  });
+}
+
+/**
+ * Generate a CODE128-style barcode DataURL from a string value using canvas.
+ * Draws a simplified bar pattern suitable for visual display in PDF.
+ */
+function getBarcodeDataURL(value: string): string {
+  const barWidth = 2;
+  const height = 50;
+  const quietZone = 10;
+  const bars: boolean[] = [];
+  // Start bar (simplified CODE128 pattern)
+  bars.push(
+    true,
+    true,
+    false,
+    true,
+    false,
+    false,
+    true,
+    false,
+    false,
+    true,
+    true,
+  );
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    for (let b = 6; b >= 0; b--) {
+      bars.push(((code >> b) & 1) === 1);
+    }
+    bars.push(false);
+  }
+  // Stop bar
+  bars.push(
+    true,
+    true,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false,
+    true,
+    true,
+  );
+
+  const totalWidth = bars.length * barWidth + quietZone * 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = totalWidth;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, totalWidth, height);
+  bars.forEach((filled, i) => {
+    if (filled) {
+      ctx.fillStyle = "#0a2c6e";
+      ctx.fillRect(quietZone + i * barWidth, 0, barWidth, height);
+    }
+  });
+  return canvas.toDataURL("image/png");
+}
+
 async function renderTicketPage(
   doc: any,
   booking: Booking,
@@ -334,7 +424,7 @@ export async function downloadTicketPDF(
   doc.save(`BRTS_Ticket_${booking.pnr}.pdf`);
 }
 
-// -- All Tickets Report (compact table layout) ---------------------------------
+// -- All Tickets Report (compact table + single QR + single barcode) ----------
 export async function downloadAllTicketsPDF(
   bookings: Booking[],
 ): Promise<void> {
@@ -355,11 +445,51 @@ export async function downloadAllTicketsPDF(
   const ORANGE = [220, 80, 10] as [number, number, number];
   const GREEN = [22, 163, 74] as [number, number, number];
   const WHITE = [255, 255, 255] as [number, number, number];
-  const _GRAY = [110, 110, 110] as [number, number, number];
+  const GRAY = [110, 110, 110] as [number, number, number];
   const DARK = [30, 30, 30] as [number, number, number];
 
   const confirmed = bookings.filter((b) => b.status === "CONFIRMED").length;
   const waiting = bookings.length - confirmed;
+
+  // -- Build single QR data: full JSON of all tickets -------------------------
+  const allTicketsData = bookings.map((b) => ({
+    pnr: b.pnr,
+    status: b.status,
+    travelDate: b.travelDate,
+    travelClass: b.travelClass,
+    quota: b.quota,
+    train: {
+      number: b.train.number,
+      name: b.train.name,
+      from: b.train.from,
+      to: b.train.to,
+    },
+    passengers: b.passengers.map((p) => ({
+      name: p.name,
+      age: p.age,
+      gender: p.gender,
+      coach: p.coach,
+      seat: p.seat,
+    })),
+  }));
+
+  // Keep QR data compact but complete
+  const qrJsonText = JSON.stringify({
+    report: "BRTS All Tickets",
+    generated: new Date().toISOString(),
+    total: bookings.length,
+    confirmed,
+    tickets: allTicketsData,
+  });
+
+  // Report ID for barcode: "BRTS" + date + ticket count
+  const reportId = `BRTS${new Date().toISOString().slice(0, 10).replace(/-/g, "")}T${bookings.length}`;
+
+  // Generate QR and barcode in parallel
+  const [qrDataURL, barcodeDataURL] = await Promise.all([
+    getQRDataURLFromText(qrJsonText),
+    Promise.resolve(getBarcodeDataURL(reportId)),
+  ]);
 
   // -- Page header ------------------------------------------------------------
   const drawPageHeader = (pageLabel?: string) => {
@@ -411,8 +541,6 @@ export async function downloadAllTicketsPDF(
   y += 16;
 
   // -- Column layout ----------------------------------------------------------
-  // [label, x-start, col-width]
-  // Landscape A4 = 297mm, margins 8mm each side = 281mm usable
   const cols: [string, number, number][] = [
     ["PNR", ML, 25],
     ["Passenger", ML + 25, 36],
@@ -428,6 +556,8 @@ export async function downloadAllTicketsPDF(
 
   const ROW_H = 6.5;
   const HDR_H = 8;
+  // Reserve space at bottom of LAST page for QR+barcode section (45mm)
+  const QR_SECTION_H = 48;
   const FOOTER_H = 9;
   const USABLE_H = PH - FOOTER_H;
 
@@ -446,9 +576,32 @@ export async function downloadAllTicketsPDF(
   // -- Rows -------------------------------------------------------------------
   let pageNum = 1;
 
+  // We need to know if we're on the last page to reserve QR space.
+  // Pre-calculate how many rows fit per page:
+  // Page 1: usable = USABLE_H - y_after_header - QR_SECTION_H (reserve for QR on last page)
+  // Subsequent pages: full usable height
+  // Simple approach: just leave QR space on the last page by checking remaining rows.
+
+  const firstPageRowSpace = USABLE_H - y - FOOTER_H - QR_SECTION_H;
+  const rowsOnFirstPage = Math.floor(firstPageRowSpace / ROW_H);
+  const laterPageRowSpace = USABLE_H - (26 + HDR_H) - FOOTER_H - QR_SECTION_H;
+  const rowsPerLaterPage = Math.floor(laterPageRowSpace / ROW_H);
+
+  let remainingRows = bookings.length;
+  let pagesNeeded = 1;
+  if (remainingRows > rowsOnFirstPage) {
+    remainingRows -= rowsOnFirstPage;
+    pagesNeeded += Math.ceil(remainingRows / rowsPerLaterPage);
+  }
+  const lastPageNum = pagesNeeded;
+
   bookings.forEach((booking, idx) => {
+    // Determine if this row is on the last page
+    const isLastPage = pageNum === lastPageNum;
+    const reserveForQR = isLastPage ? QR_SECTION_H : 0;
+
     // Auto page-break
-    if (y + ROW_H > USABLE_H - FOOTER_H) {
+    if (y + ROW_H > USABLE_H - FOOTER_H - reserveForQR) {
       // Footer on current page
       doc.setFillColor(...BLUE);
       doc.rect(0, PH - FOOTER_H, PW, FOOTER_H, "F");
@@ -508,7 +661,7 @@ export async function downloadAllTicketsPDF(
     )[0] as string;
     doc.text(trainLabel, cols[2][1] + 2, y + 4.5);
 
-    // Route — use " -> " instead of unicode arrow (jsPDF helvetica font doesn't support \u2192)
+    // Route
     doc.text(
       `${booking.train.from} -> ${booking.train.to}`,
       cols[3][1] + 2,
@@ -543,6 +696,67 @@ export async function downloadAllTicketsPDF(
     doc.text(booking.status, cols[9][1] + 2, y + 4.5);
 
     y += ROW_H;
+  });
+
+  // -- Single QR + Barcode section at bottom of last page ---------------------
+  const QR_Y = PH - FOOTER_H - QR_SECTION_H + 2;
+
+  // Divider line
+  doc.setDrawColor(...BLUE);
+  doc.setLineWidth(0.4);
+  doc.line(ML, QR_Y, PW - MR, QR_Y);
+
+  // Section label
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...BLUE);
+  doc.text("REPORT QR CODE & BARCODE", ML + 2, QR_Y + 5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.5);
+  doc.setTextColor(...GRAY);
+  doc.text(
+    "Single QR contains full ticket data in JSON format. Barcode encodes Report ID.",
+    ML + 2,
+    QR_Y + 9,
+  );
+
+  // QR code (left side)
+  const QR_SIZE = 32;
+  const QR_X = ML + 2;
+  const QR_IMG_Y = QR_Y + 11;
+  if (qrDataURL) {
+    try {
+      doc.addImage(qrDataURL, "PNG", QR_X, QR_IMG_Y, QR_SIZE, QR_SIZE);
+    } catch (_) {}
+  }
+  doc.setFontSize(5);
+  doc.setTextColor(...GRAY);
+  doc.text(
+    "Scan to view all ticket data",
+    QR_X + QR_SIZE / 2,
+    QR_IMG_Y + QR_SIZE + 3,
+    { align: "center" },
+  );
+
+  // Barcode (right of QR)
+  const BAR_X = QR_X + QR_SIZE + 6;
+  const BAR_W = 100;
+  const BAR_H = 18;
+  const BAR_Y = QR_IMG_Y + 4;
+  if (barcodeDataURL) {
+    try {
+      doc.addImage(barcodeDataURL, "PNG", BAR_X, BAR_Y, BAR_W, BAR_H);
+    } catch (_) {}
+  }
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...BLUE);
+  doc.text(reportId, BAR_X + BAR_W / 2, BAR_Y + BAR_H + 4, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5);
+  doc.setTextColor(...GRAY);
+  doc.text("Report Barcode (Report ID)", BAR_X + BAR_W / 2, BAR_Y + BAR_H + 8, {
+    align: "center",
   });
 
   // -- Footer (last page) -----------------------------------------------------
