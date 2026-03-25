@@ -13,7 +13,26 @@ export type BerthType =
   | "Side Lower"
   | "Side Upper";
 
-export type TravelClass = "Sleeper" | "AC 3 Tier" | "AC 2 Tier" | "General";
+export type TravelClass =
+  | "Sleeper"
+  | "AC 3 Tier"
+  | "AC 2 Tier"
+  | "AC First Class"
+  | "General";
+
+/** Class code shown in UI and on ticket */
+export const CLASS_CODE: Record<TravelClass, string> = {
+  Sleeper: "SL",
+  "AC 3 Tier": "3A",
+  "AC 2 Tier": "2A",
+  "AC First Class": "1A",
+  General: "GN",
+};
+
+/** Full label: code + name */
+export function classLabel(cls: TravelClass): string {
+  return `${CLASS_CODE[cls]} - ${cls}`;
+}
 
 export interface Seat {
   number: number;
@@ -104,7 +123,7 @@ export function generateSeats(
       }
     }
   } else if (travelClass === "AC 2 Tier") {
-    // 8 compartments × 4 berths (L, U each side) = 32 seats, no middle or side berths
+    // 8 compartments × 4 berths (L, U each side) = 32 seats
     const bookedSet = new Set<number>();
     for (let i = 0; i < 14; i++) {
       const n = ((seed * (i + 7) * 31) % 32) + 1;
@@ -121,15 +140,34 @@ export function generateSeats(
         });
       }
     }
+  } else if (travelClass === "AC First Class") {
+    // Premium: 4 compartments × 4 berths (L, U each side) = 16 seats
+    const bookedSet = new Set<number>();
+    for (let i = 0; i < 6; i++) {
+      const n = ((seed * (i + 7) * 31) % 16) + 1;
+      bookedSet.add(n);
+    }
+    const mainBerths: BerthType[] = ["Lower", "Upper", "Lower", "Upper"];
+    for (let comp = 0; comp < 4; comp++) {
+      for (let b = 0; b < 4; b++) {
+        const num = comp * 4 + b + 1;
+        seats.push({
+          number: num,
+          berth: mainBerths[b],
+          booked: bookedSet.has(num),
+        });
+      }
+    }
   }
 
   return seats;
 }
 
 const coachLabels: Record<TravelClass, string> = {
-  Sleeper: "Coach S1 — Sleeper Class",
-  "AC 3 Tier": "Coach A1 — AC 3 Tier",
-  "AC 2 Tier": "Coach B1 — AC 2 Tier",
+  Sleeper: "Coach S1 — SL (Sleeper)",
+  "AC 3 Tier": "Coach A1 — 3A (AC 3 Tier)",
+  "AC 2 Tier": "Coach B1 — 2A (AC 2 Tier)",
+  "AC First Class": "Coach H1 — 1A (AC First Class)",
   General: "General",
 };
 
@@ -173,16 +211,17 @@ export default function SeatLayout({
   onToggleSeat,
   travelClass,
 }: SeatLayoutProps) {
-  const isAC2 = travelClass === "AC 2 Tier";
-  const berthsPerComp = isAC2 ? 4 : 6;
+  const isAC2orAC1 =
+    travelClass === "AC 2 Tier" || travelClass === "AC First Class";
+  const berthsPerComp = isAC2orAC1 ? 4 : 6;
 
-  // Split main and side seats (Sleeper only has side berths)
+  // Side berths only in Sleeper
   const mainSeats =
     travelClass === "Sleeper" ? seats.filter((s) => s.number <= 48) : seats;
   const sideSeats =
     travelClass === "Sleeper" ? seats.filter((s) => s.number > 48) : [];
 
-  const numCompartments = isAC2 ? 8 : 8;
+  const numCompartments = travelClass === "AC First Class" ? 4 : 8;
   const compartments: Seat[][] = [];
   for (let i = 0; i < numCompartments; i++) {
     compartments.push(

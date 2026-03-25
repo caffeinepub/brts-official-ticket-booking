@@ -177,9 +177,14 @@ export function generateBooking(
 ): Booking {
   const pnr = (Math.floor(Math.random() * 9000000000) + 1000000000).toString();
   const coach = COACHES[Math.floor(Math.random() * COACHES.length)];
+  const isGeneral = travelClass === "General";
   const assignedSeats = new Set<number>(selectedSeats);
 
   const passengersWithSeats: PassengerWithSeat[] = passengers.map((p, i) => {
+    if (isGeneral) {
+      // GN class — no seat assignment
+      return { ...p, seat: 0, coach: "GN" };
+    }
     let seat = selectedSeats[i];
     if (seat === undefined) {
       // Auto-assign a seat not already picked

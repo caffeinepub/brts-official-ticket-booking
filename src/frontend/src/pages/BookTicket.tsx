@@ -1,4 +1,5 @@
 import SeatLayout, {
+  classLabel,
   generateSeats,
   type TravelClass,
 } from "@/components/SeatLayout";
@@ -47,6 +48,7 @@ const travelClasses: TravelClass[] = [
   "Sleeper",
   "AC 3 Tier",
   "AC 2 Tier",
+  "AC First Class",
   "General",
 ];
 const quotas = ["General", "Tatkal", "Ladies"];
@@ -451,7 +453,7 @@ export default function BookTicket() {
                   <SelectContent>
                     {travelClasses.map((c) => (
                       <SelectItem key={c} value={c}>
-                        {c}
+                        {classLabel(c)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -464,7 +466,7 @@ export default function BookTicket() {
                   <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
                   <div>
                     <p className="font-semibold text-blue-800 text-sm">
-                      General Class — No Seat Selection
+                      GN — General Class — No Seat Selection
                     </p>
                     <p className="text-blue-700 text-sm mt-1">
                       Seat will be auto-assigned at time of boarding. No advance
@@ -660,7 +662,9 @@ export default function BookTicket() {
                   <p className="text-xs text-muted-foreground">
                     Class:{" "}
                     <span className="font-semibold text-foreground">
-                      {travelClass}
+                      {travelClass
+                        ? classLabel(travelClass as TravelClass)
+                        : ""}
                     </span>
                   </p>
                 </div>
@@ -764,7 +768,9 @@ export default function BookTicket() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Class</p>
-                  <p className="font-medium">{previewBooking.travelClass}</p>
+                  <p className="font-medium">
+                    {classLabel(previewBooking.travelClass as TravelClass)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Quota</p>
@@ -798,15 +804,23 @@ export default function BookTicket() {
                   </thead>
                   <tbody>
                     {previewBooking.passengers.map((p, i) => (
-                      <tr key={p.seat} className="border-t border-border">
+                      <tr key={p.name || i} className="border-t border-border">
                         <td className="px-3 py-2 text-muted-foreground">
                           {i + 1}
                         </td>
                         <td className="px-3 py-2 font-medium">{p.name}</td>
                         <td className="px-3 py-2">{p.age}</td>
                         <td className="px-3 py-2">{p.gender}</td>
-                        <td className="px-3 py-2">{p.coach}</td>
-                        <td className="px-3 py-2 font-mono">{p.seat}</td>
+                        <td className="px-3 py-2">
+                          {previewBooking.travelClass === "General"
+                            ? "GN"
+                            : p.coach}
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          {previewBooking.travelClass === "General"
+                            ? "Not Applicable"
+                            : p.seat}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
