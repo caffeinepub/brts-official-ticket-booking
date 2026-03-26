@@ -1,4 +1,11 @@
-import type { backendInterface } from "@/backend";
+import type {
+  Booking as BackendBooking,
+  Passenger as BackendPassenger,
+  BookingStatus,
+  TrainDetails,
+  backendInterface,
+} from "@/backend";
+import { Principal } from "@icp-sdk/core/principal";
 
 export interface Passenger {
   name: string;
@@ -22,19 +29,6 @@ export interface TicketTrain {
   duration: string;
 }
 
-export interface Ticket {
-  pnr: string;
-  coach: string;
-  seat: number;
-  status: "CONFIRMED" | "WAITING LIST";
-  passenger: Passenger;
-  train: TicketTrain;
-  travelDate: string;
-  travelClass: string;
-  quota: string;
-  bookedAt: string;
-}
-
 export interface Booking {
   pnr: string;
   passengers: PassengerWithSeat[];
@@ -47,123 +41,115 @@ export interface Booking {
 }
 
 type Actor = backendInterface;
-type BackendTicket = Awaited<ReturnType<Actor["getAllTickets"]>>[number];
 
-function encodeClassQuota(travelClass: string, quota: string): string {
-  return `${travelClass} | ${quota}`;
+// ─── Mapping helpers ─────────────────────────────────────────────────────────
+
+function statusToString(s: BookingStatus): "CONFIRMED" | "WAITING LIST" {
+  return s.__kind__ === "confirmed" ? "CONFIRMED" : "WAITING LIST";
 }
 
-function decodeClassQuota(stored: string): {
-  travelClass: string;
-  quota: string;
-} {
-  const idx = stored.lastIndexOf(" | ");
-  if (idx === -1) return { travelClass: stored, quota: "General" };
-  return { travelClass: stored.slice(0, idx), quota: stored.slice(idx + 3) };
+function statusFromString(s: string): BookingStatus {
+  if (s === "CONFIRMED") return { __kind__: "confirmed", confirmed: null };
+  return { __kind__: "waiting", waiting: 0n };
 }
 
-export function mapBackendToTicket(bt: BackendTicket): Ticket {
-  const { travelClass, quota } = decodeClassQuota(bt.travelClass);
+function mapBackendBooking(b: BackendBooking): Booking {
   return {
-    pnr: bt.pnr,
-    coach: bt.coach,
-    seat: Number(bt.seat),
-    status: (bt.status as "CONFIRMED" | "WAITING LIST") || "CONFIRMED",
-    passenger: {
-      name: bt.passengerName,
-      age: String(bt.passengerAge || ""),
-      gender: bt.passengerGender,
-    },
+    pnr: b.pnr,
+    passengers: b.passengers.map((p) => ({
+      name: p.name,
+      age: String(Number(p.age)),
+      gender: p.gender,
+      coach: p.coach ?? "GN",
+      seat: p.seat ? Number(p.seat) : 0,
+    })),
     train: {
-      id: bt.trainNumber,
-      number: bt.trainNumber,
-      name: bt.trainName,
-      from: bt.trainFrom,
-      to: bt.trainTo,
+      id: b.trainDetails.trainNumber,
+      number: b.trainDetails.trainNumber,
+      name: b.trainDetails.trainName,
+      from: b.trainDetails.journeyFrom,
+      to: b.trainDetails.journeyTo,
       fare: 0,
-      type: bt.trainType,
-      duration: bt.trainDuration,
+      type: b.trainDetails.trainType,
+      duration: "",
     },
-    travelDate: bt.travelDate,
-    travelClass,
-    quota,
-    bookedAt: bt.bookedAt,
+    travelDate: b.travelDate,
+    travelClass: b.bookingClass,
+    quota: b.quota,
+    status: statusToString(b.status),
+    bookedAt: b.trainDetails.bookingTime,
   };
 }
 
-function mapTicketToBackend(ticket: Ticket): BackendTicket {
+function mapBookingToBackend(booking: Booking): BackendBooking {
+  const passengers: BackendPassenger[] = booking.passengers.map((p) => ({
+    name: p.name,
+    age: BigInt(Number.parseInt(p.age) || 0),
+    gender: p.gender,
+    coach: p.coach,
+    seat: String(p.seat),
+  }));
+
+  const trainDetails: TrainDetails = {
+    trainNumber: booking.train.number,
+    trainName: booking.train.name,
+    journeyFrom: booking.train.from,
+    journeyTo: booking.train.to,
+    trainType: booking.train.type,
+    travelClass: booking.travelClass,
+    quota: booking.quota,
+    journeyDate: booking.travelDate,
+    bookingTime: booking.bookedAt,
+  };
+
   return {
-    pnr: ticket.pnr,
-    coach: ticket.coach,
-    seat: BigInt(ticket.seat),
-    status: ticket.status,
-    passengerName: ticket.passenger.name,
-    passengerAge: String(ticket.passenger.age || "0"),
-    passengerGender: ticket.passenger.gender,
-    trainNumber: ticket.train.number,
-    trainName: ticket.train.name,
-    trainFrom: ticket.train.from,
-    trainTo: ticket.train.to,
-    trainType: ticket.train.type,
-    trainDuration: ticket.train.duration,
-    travelDate: ticket.travelDate,
-    travelClass: encodeClassQuota(ticket.travelClass, ticket.quota),
-    bookedAt: ticket.bookedAt,
+    pnr: booking.pnr,
+    status: statusFromString(booking.status),
+    passengersCount: BigInt(booking.passengers.length),
+    owner: Principal.anonymous(),
+    quota: booking.quota,
+    passengers,
+    trainDetails,
+    travelDate: booking.travelDate,
+    bookingClass: booking.travelClass,
   };
 }
 
-export async function getTickets(actor: Actor): Promise<Ticket[]> {
-  const backendTickets = await actor.getAllTickets();
-  return backendTickets.map(mapBackendToTicket);
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function getTickets(actor: Actor): Promise<Booking[]> {
+  const backendBookings = await actor.getAllBookings();
+  return backendBookings.map(mapBackendBooking);
 }
 
-export async function saveTicket(actor: Actor, ticket: Ticket): Promise<void> {
-  await actor.saveTicket(mapTicketToBackend(ticket));
+export async function saveBooking(
+  actor: Actor,
+  booking: Booking,
+): Promise<void> {
+  await actor.addBooking(mapBookingToBackend(booking));
 }
 
-export async function deleteTicket(actor: Actor, pnr: string): Promise<void> {
-  await actor.deleteTicket(pnr);
+export async function deleteBooking(actor: Actor, pnr: string): Promise<void> {
+  await actor.cancelBooking(pnr);
 }
 
-export async function searchTicketByPnrAndName(
+export async function searchBookingByPnrAndName(
   actor: Actor,
   pnr: string,
   name: string,
-): Promise<Ticket | null> {
-  const bt = await actor.getTicketByPnr(pnr);
-  if (!bt) return null;
-  const storedName = bt.passengerName.trim().toLowerCase().replace(/\s+/g, " ");
+): Promise<Booking | null> {
+  const b = await actor.getBooking(pnr);
+  if (!b) return null;
+  const booking = mapBackendBooking(b);
   const queryName = name.trim().toLowerCase().replace(/\s+/g, " ");
-  if (storedName !== queryName) return null;
-  return mapBackendToTicket(bt);
+  const hasMatch = booking.passengers.some(
+    (p) => p.name.trim().toLowerCase().replace(/\s+/g, " ") === queryName,
+  );
+  if (!hasMatch) return null;
+  return booking;
 }
 
-export function generateTicket(
-  passenger: Passenger,
-  train: TicketTrain,
-  travelDate: string,
-  travelClass: string,
-): Ticket {
-  const pnr = (Math.floor(Math.random() * 9000000000) + 1000000000).toString();
-  const coaches = ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "S1", "S2", "S3"];
-  const coach = coaches[Math.floor(Math.random() * coaches.length)];
-  const seat = Math.floor(1 + Math.random() * 72);
-  const status = Math.random() > 0.2 ? "CONFIRMED" : "WAITING LIST";
-  return {
-    pnr,
-    coach,
-    seat,
-    status: status as "CONFIRMED" | "WAITING LIST",
-    passenger,
-    train,
-    travelDate,
-    travelClass,
-    quota: "General",
-    bookedAt: new Date().toISOString(),
-  };
-}
-
-// ─── Multi-passenger booking utilities ───────────────────────────────────────
+// ─── Booking generation ───────────────────────────────────────────────────────
 
 const COACHES = ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "S1", "S2", "S3"];
 
@@ -182,12 +168,10 @@ export function generateBooking(
 
   const passengersWithSeats: PassengerWithSeat[] = passengers.map((p, i) => {
     if (isGeneral) {
-      // GN class — no seat assignment
       return { ...p, seat: 0, coach: "GN" };
     }
     let seat = selectedSeats[i];
     if (seat === undefined) {
-      // Auto-assign a seat not already picked
       do {
         seat = Math.floor(1 + Math.random() * 72);
       } while (assignedSeats.has(seat));
@@ -215,86 +199,7 @@ export function generateBooking(
   };
 }
 
-export async function saveBooking(
-  actor: Actor,
-  booking: Booking,
-): Promise<void> {
-  await Promise.all(
-    booking.passengers.map((p) =>
-      saveTicket(actor, {
-        pnr: booking.pnr,
-        coach: p.coach,
-        seat: p.seat,
-        status: booking.status,
-        passenger: {
-          name: p.name,
-          age: String(p.age || "0"),
-          gender: p.gender,
-        },
-        train: booking.train,
-        travelDate: booking.travelDate,
-        travelClass: booking.travelClass,
-        quota: booking.quota,
-        bookedAt: booking.bookedAt,
-      }),
-    ),
-  );
-}
-
-export function groupTicketsIntoBookings(tickets: Ticket[]): Booking[] {
-  const map = new Map<string, Ticket[]>();
-  for (const t of tickets) {
-    const group = map.get(t.pnr) ?? [];
-    group.push(t);
-    map.set(t.pnr, group);
-  }
-  const bookings: Booking[] = [];
-  for (const [pnr, group] of map) {
-    const first = group[0];
-    bookings.push({
-      pnr,
-      passengers: group.map((t) => ({
-        name: t.passenger.name,
-        age: t.passenger.age,
-        gender: t.passenger.gender,
-        seat: t.seat,
-        coach: t.coach,
-      })),
-      train: first.train,
-      travelDate: first.travelDate,
-      travelClass: first.travelClass,
-      quota: first.quota,
-      status: first.status,
-      bookedAt: first.bookedAt,
-    });
-  }
+// Legacy - keep for compatibility
+export function groupTicketsIntoBookings(bookings: Booking[]): Booking[] {
   return bookings;
-}
-
-export async function searchBookingByPnrAndName(
-  actor: Actor,
-  pnr: string,
-  name: string,
-): Promise<Booking | null> {
-  const allTickets = await actor.getAllTickets();
-  const matching = allTickets
-    .filter((bt) => bt.pnr === pnr)
-    .map(mapBackendToTicket);
-  if (matching.length === 0) return null;
-  const queryName = name.trim().toLowerCase().replace(/\s+/g, " ");
-  const hasMatch = matching.some(
-    (t) =>
-      t.passenger.name.trim().toLowerCase().replace(/\s+/g, " ") === queryName,
-  );
-  if (!hasMatch) return null;
-  const groups = groupTicketsIntoBookings(matching);
-  return groups[0] ?? null;
-}
-
-export async function deleteBooking(actor: Actor, pnr: string): Promise<void> {
-  const allTickets = await actor.getAllTickets();
-  const count = allTickets.filter((bt) => bt.pnr === pnr).length;
-  for (let i = 0; i < count; i++) {
-    await actor.deleteTicket(pnr);
-  }
 }

@@ -2,15 +2,10 @@ import { type TravelClass, classLabel } from "@/components/SeatLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/utils/storage";
-import { downloadAllTicketsPDF } from "@/utils/ticketPdf";
 import html2canvas from "html2canvas";
-import JsBarcode from "jsbarcode";
 import { jsPDF } from "jspdf";
 import { Download, Trash2 } from "lucide-react";
-import QRCode from "qrcode";
-import { useEffect, useRef, useState } from "react";
-
-export { downloadAllTicketsPDF };
+import { useRef, useState } from "react";
 
 interface TicketCardProps {
   booking: Booking;
@@ -24,79 +19,26 @@ function quotaLabel(q: string): string {
   return "GN - General";
 }
 
-function buildQRData(booking: Booking): string {
-  return JSON.stringify({
-    pnr: booking.pnr,
-    status: booking.status,
-    travelDate: booking.travelDate,
-    travelClass: booking.travelClass,
-    quota: booking.quota,
-    train: {
-      number: booking.train.number,
-      name: booking.train.name,
-      from: booking.train.from,
-      to: booking.train.to,
-      type: booking.train.type,
-      duration: booking.train.duration,
-    },
-    passengers: booking.passengers.map((p) => ({
-      name: p.name,
-      age: p.age,
-      gender: p.gender,
-      coach: p.coach,
-      seat: p.seat,
-      berth: (p as any).berth,
-    })),
-    bookedAt: booking.bookedAt,
-  });
-}
-
 export default function TicketCard({
   booking,
   onDelete,
   index,
 }: TicketCardProps) {
   const idx = index !== undefined ? index + 1 : 1;
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
-  const barcodeRef = useRef<SVGSVGElement>(null);
   const ticketRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
-
-  useEffect(() => {
-    if (!qrCanvasRef.current) return;
-    QRCode.toCanvas(qrCanvasRef.current, buildQRData(booking), {
-      width: 100,
-      margin: 1,
-      color: { dark: "#0a2c6e", light: "#ffffff" },
-    });
-  }, [booking]);
-
-  useEffect(() => {
-    if (!barcodeRef.current) return;
-    JsBarcode(barcodeRef.current, booking.pnr, {
-      format: "CODE128",
-      width: 2,
-      height: 48,
-      displayValue: false,
-      background: "#ffffff",
-      lineColor: "#0a2c6e",
-    });
-  }, [booking.pnr]);
 
   async function downloadTicket() {
     if (!ticketRef.current) return;
     setDownloading(true);
     try {
-      // Wait for QR and barcode to fully render
-      await new Promise((r) => setTimeout(r, 500));
-
+      await new Promise((r) => setTimeout(r, 200));
       const canvas = await html2canvas(ticketRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
         logging: false,
       });
-
       const imgData = canvas.toDataURL("image/png");
       const doc = new jsPDF({
         unit: "px",
@@ -291,45 +233,29 @@ export default function TicketCard({
         </div>
       </div>
 
-      {/* QR + Barcode + Actions */}
-      <div className="px-5 py-4 flex flex-wrap items-end justify-between gap-4 bg-white">
-        <div className="flex items-end gap-6">
-          <div className="text-center">
-            <canvas ref={qrCanvasRef} />
-            <div className="text-[9px] text-gray-400 mt-1">
-              Scan QR for details
-            </div>
-          </div>
-          <div className="text-center">
-            <svg ref={barcodeRef} />
-            <div className="text-[9px] text-gray-400 font-mono tracking-widest mt-1">
-              {booking.pnr}
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2 items-center">
+      {/* Actions */}
+      <div className="px-5 py-4 flex flex-wrap items-center justify-end gap-2 bg-white">
+        <Button
+          size="sm"
+          className="bg-[#0a2c6e] hover:bg-[#0d3a8e] text-white flex items-center gap-1"
+          onClick={downloadTicket}
+          disabled={downloading}
+          data-ocid={`ticket.download_button.${idx}`}
+        >
+          <Download className="h-3 w-3" />
+          {downloading ? "Generating..." : "Download PDF"}
+        </Button>
+        {onDelete && (
           <Button
             size="sm"
-            className="bg-[#0a2c6e] hover:bg-[#0d3a8e] text-white flex items-center gap-1"
-            onClick={downloadTicket}
-            disabled={downloading}
-            data-ocid={`ticket.download_button.${idx}`}
+            variant="destructive"
+            onClick={() => onDelete(booking.pnr)}
+            className="flex items-center gap-1"
+            data-ocid={`ticket.delete_button.${idx}`}
           >
-            <Download className="h-3 w-3" />
-            {downloading ? "Generating..." : "Download PDF"}
+            <Trash2 className="h-3 w-3" /> Delete
           </Button>
-          {onDelete && (
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => onDelete(booking.pnr)}
-              className="flex items-center gap-1"
-              data-ocid={`ticket.delete_button.${idx}`}
-            >
-              <Trash2 className="h-3 w-3" /> Delete
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Footer */}
