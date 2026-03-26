@@ -5,12 +5,12 @@ import Nat "mo:core/Nat";
 import List "mo:core/List";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
-import Migration "migration";
+
 
 import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 
-(with migration = Migration.run)
+
 actor {
   // Include prefabricated MixinAuthorization module to enable authentication and authorization.
   let accessControlState = AccessControl.initState();
