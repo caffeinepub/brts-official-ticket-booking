@@ -2,7 +2,6 @@ import { type TravelClass, classLabel } from "@/components/SeatLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/utils/storage";
-import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { Download, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -19,6 +18,212 @@ function quotaLabel(q: string): string {
   return "GN - General";
 }
 
+function generateTicketPDF(booking: Booking) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const isGeneral = booking.travelClass === "General";
+  const pageW = 210;
+  const margin = 15;
+  const contentW = pageW - margin * 2;
+
+  // Header background
+  doc.setFillColor(10, 44, 110);
+  doc.rect(0, 0, pageW, 30, "F");
+
+  // Header text
+  doc.setTextColor(170, 196, 255);
+  doc.setFontSize(8);
+  doc.text("BHARTIYA RAILWAY TICKET SYSTEM", margin, 10);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text("BRTS Official e-Ticket", margin, 22);
+
+  // Booking date top right
+  doc.setTextColor(170, 196, 255);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    `Booked: ${new Date(booking.bookedAt).toLocaleDateString("en-IN")}`,
+    pageW - margin,
+    22,
+    { align: "right" },
+  );
+
+  // PNR bar
+  doc.setFillColor(240, 244, 255);
+  doc.rect(0, 30, pageW, 20, "F");
+  doc.setDrawColor(200, 216, 240);
+  doc.line(0, 50, pageW, 50);
+
+  doc.setTextColor(10, 44, 110);
+  doc.setFontSize(18);
+  doc.setFont("courier", "bold");
+  doc.text(booking.pnr, margin, 44);
+
+  // Status badge
+  const isConfirmed = booking.status === "CONFIRMED";
+  doc.setFillColor(
+    isConfirmed ? 220 : 255,
+    isConfirmed ? 252 : 243,
+    isConfirmed ? 231 : 224,
+  );
+  doc.setDrawColor(
+    isConfirmed ? 134 : 253,
+    isConfirmed ? 239 : 186,
+    isConfirmed ? 172 : 116,
+  );
+  doc.roundedRect(80, 35, 30, 9, 2, 2, "FD");
+  doc.setTextColor(
+    isConfirmed ? 22 : 154,
+    isConfirmed ? 101 : 52,
+    isConfirmed ? 52 : 18,
+  );
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(booking.status, 95, 41, { align: "center" });
+
+  // Class + Quota right side
+  doc.setTextColor(85, 85, 85);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    `Class: ${classLabel(booking.travelClass as TravelClass)}`,
+    pageW - margin,
+    37,
+    { align: "right" },
+  );
+  doc.text(
+    `Quota: ${quotaLabel(booking.quota || "General")}`,
+    pageW - margin,
+    44,
+    { align: "right" },
+  );
+
+  // Section: Train Info
+  let y = 58;
+  doc.setFillColor(248, 250, 255);
+  doc.rect(margin, y, contentW / 2 - 4, 28, "F");
+  doc.setDrawColor(224, 234, 255);
+  doc.rect(margin, y, contentW / 2 - 4, 28);
+
+  doc.setTextColor(170, 170, 170);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text("TRAIN INFORMATION", margin + 3, y + 6);
+  doc.setTextColor(10, 44, 110);
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(booking.train.name, margin + 3, y + 14);
+  doc.setTextColor(68, 68, 68);
+  doc.setFontSize(9);
+  doc.setFont("courier", "normal");
+  doc.text(booking.train.number, margin + 3, y + 20);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    `${booking.train.type} • ${booking.train.duration}`,
+    margin + 3,
+    y + 26,
+  );
+
+  // Section: Journey Details
+  const col2x = margin + contentW / 2 + 4;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(col2x, y, contentW / 2 - 4, 28, "F");
+  doc.setDrawColor(224, 234, 255);
+  doc.rect(col2x, y, contentW / 2 - 4, 28);
+
+  doc.setTextColor(170, 170, 170);
+  doc.setFontSize(7);
+  doc.text("JOURNEY DETAILS", col2x + 3, y + 6);
+  doc.setTextColor(10, 44, 110);
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${booking.train.from}  ->  ${booking.train.to}`, col2x + 3, y + 16);
+  doc.setTextColor(85, 85, 85);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Travel Date: ${booking.travelDate}`, col2x + 3, y + 24);
+
+  // Passenger table
+  y += 34;
+  doc.setTextColor(170, 170, 170);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text("PASSENGER DETAILS", margin, y);
+  y += 4;
+
+  // Table header
+  const cols = [
+    "#",
+    "Passenger Name",
+    "Age",
+    "Gender",
+    "Coach",
+    "Seat No.",
+    "Berth",
+  ];
+  const colWidths = [8, 50, 12, 18, 18, 22, 52];
+  const rowH = 8;
+  doc.setFillColor(10, 44, 110);
+  doc.rect(margin, y, contentW, rowH, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  let cx = margin + 2;
+  cols.forEach((col, i) => {
+    doc.text(col, cx, y + 5.5);
+    cx += colWidths[i];
+  });
+  y += rowH;
+
+  // Table rows
+  booking.passengers.forEach((p, i) => {
+    doc.setFillColor(
+      i % 2 === 0 ? 255 : 240,
+      i % 2 === 0 ? 255 : 244,
+      i % 2 === 0 ? 255 : 255,
+    );
+    doc.rect(margin, y, contentW, rowH, "F");
+    doc.setDrawColor(224, 234, 255);
+    doc.rect(margin, y, contentW, rowH);
+    doc.setTextColor(68, 68, 68);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    const rowData = [
+      String(i + 1),
+      p.name,
+      String(p.age),
+      p.gender,
+      isGeneral ? "GN" : p.coach || "-",
+      isGeneral ? "N/A" : p.seat || "-",
+      isGeneral ? "General - No Seat" : (p as any).berth || "-",
+    ];
+    cx = margin + 2;
+    rowData.forEach((val, j) => {
+      doc.text(val, cx, y + 5.5);
+      cx += colWidths[j];
+    });
+    y += rowH;
+  });
+
+  // Footer
+  y += 8;
+  doc.setFillColor(240, 244, 255);
+  doc.rect(0, y, pageW, 12, "F");
+  doc.setTextColor(136, 136, 136);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "italic");
+  doc.text(
+    "This is a computer-generated ticket. No signature required.",
+    pageW / 2,
+    y + 7,
+    { align: "center" },
+  );
+
+  doc.save(`BRTS_Ticket_${booking.pnr}.pdf`);
+}
+
 export default function TicketCard({
   booking,
   onDelete,
@@ -28,24 +233,10 @@ export default function TicketCard({
   const ticketRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
-  async function downloadTicket() {
-    if (!ticketRef.current) return;
+  function downloadTicket() {
     setDownloading(true);
     try {
-      await new Promise((r) => setTimeout(r, 200));
-      const canvas = await html2canvas(ticketRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-      const imgData = canvas.toDataURL("image/png");
-      const doc = new jsPDF({
-        unit: "px",
-        format: [canvas.width / 2, canvas.height / 2],
-      });
-      doc.addImage(imgData, "PNG", 0, 0, canvas.width / 2, canvas.height / 2);
-      doc.save(`BRTS_Ticket_${booking.pnr}.pdf`);
+      generateTicketPDF(booking);
     } finally {
       setDownloading(false);
     }

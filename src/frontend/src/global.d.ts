@@ -21,23 +21,3 @@ declare module "react-leaflet" {
   export const Polyline: any;
   export const useMap: any;
 }
-
-declare module "jspdf" {
-  export class jsPDF {
-    constructor(options?: any);
-    text(text: string, x: number, y: number, options?: any): this;
-    setFontSize(size: number): this;
-    setFont(fontName: string, fontStyle?: string): this;
-    setTextColor(r: number, g?: number, b?: number): this;
-    setFillColor(r: number, g?: number, b?: number): this;
-    setDrawColor(r: number, g?: number, b?: number): this;
-    setLineWidth(width: number): this;
-    rect(x: number, y: number, w: number, h: number, style?: string): this;
-    line(x1: number, y1: number, x2: number, y2: number): this;
-    save(filename: string): void;
-    output(type: string): any;
-    addPage(): this;
-    internal: any;
-    [key: string]: any;
-  }
-}

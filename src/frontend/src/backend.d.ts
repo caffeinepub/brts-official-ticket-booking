@@ -67,6 +67,7 @@ export interface backendInterface {
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getConfirmedBookings(): Promise<Array<Booking>>;
+    getMyBookings(): Promise<Array<Booking>>;
     getTotalBookingsCount(): Promise<bigint>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     getWaitingBookings(): Promise<Array<Booking>>;

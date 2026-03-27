@@ -150,6 +150,7 @@ export interface backendInterface {
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getConfirmedBookings(): Promise<Array<Booking>>;
+    getMyBookings(): Promise<Array<Booking>>;
     getTotalBookingsCount(): Promise<bigint>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     getWaitingBookings(): Promise<Array<Booking>>;
@@ -352,6 +353,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getConfirmedBookings();
+            return from_candid_vec_n10(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getMyBookings(): Promise<Array<Booking>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMyBookings();
+                return from_candid_vec_n10(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMyBookings();
             return from_candid_vec_n10(this._uploadFile, this._downloadFile, result);
         }
     }

@@ -64,6 +64,7 @@ export interface _SERVICE {
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getConfirmedBookings' : ActorMethod<[], Array<Booking>>,
+  'getMyBookings' : ActorMethod<[], Array<Booking>>,
   'getTotalBookingsCount' : ActorMethod<[], bigint>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'getWaitingBookings' : ActorMethod<[], Array<Booking>>,
